@@ -30,7 +30,7 @@ def test_employee_insertion():
     # Create test employee
     employee = Employee(
         formal_name="John Doe",
-        email_address="john.doe@onenz.co.nz",
+        email_address="john.doe@sample.com",
         position_title="Senior Network Engineer",
         function="Technology",
         business_unit="IT",
@@ -43,7 +43,7 @@ def test_employee_insertion():
     assert emp_id > 0
     
     # Retrieve
-    retrieved = db.get_employee_by_email("john.doe@onenz.co.nz")
+    retrieved = db.get_employee_by_email("john.doe@sample.com")
     assert retrieved is not None
     assert retrieved.formal_name == "John Doe"
     assert retrieved.position_title == "Senior Network Engineer"
@@ -58,7 +58,7 @@ def test_skill_derivation():
     # Create employee with network-related position
     employee = Employee(
         formal_name="Jane Smith",
-        email_address="jane.smith@onenz.co.nz",
+        email_address="jane.smith@sample.com",
         position_title="Provisioning Specialist",
         team="Network Provisioning",
         function="Technology"
@@ -80,7 +80,7 @@ def test_skill_derivation():
     # Search by skill
     employees = db.get_employees_by_skill("provisioning")
     assert len(employees) > 0
-    assert employees[0].email_address == "jane.smith@onenz.co.nz"
+    assert employees[0].email_address == "jane.smith@sample.com"
     
     print("✅ Skill derivation test passed")
 
@@ -106,7 +106,7 @@ def test_role_ownership():
     # Create employee
     employee = Employee(
         formal_name="Alice Johnson",
-        email_address="alice.johnson@onenz.co.nz",
+        email_address="alice.johnson@sample.com",
         position_title="BIA Provisioning Lead",
         team="Provisioning"
     )
@@ -139,7 +139,7 @@ def test_full_agent_workflow():
     # Create test employees
     emp1 = Employee(
         formal_name="Bob Wilson",
-        email_address="bob.wilson@onenz.co.nz",
+        email_address="bob.wilson@sample.com",
         position_title="Network Provisioning Engineer",
         team="Network Operations",
         function="Technology"
@@ -166,7 +166,7 @@ def test_full_agent_workflow():
 
 
 if __name__ == "__main__":
-    print("Running One NZ Employee Finder Agent Tests\n")
+    print("Running Company Employee Finder Agent Tests\n")
     print("=" * 60)
     
     test_database_initialization()

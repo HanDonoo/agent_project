@@ -1,5 +1,5 @@
 """
-Excel data importer for One NZ Employee Directory
+Excel data importer for Company Employee Directory
 Imports employee data from Excel and derives skills automatically
 """
 import pandas as pd

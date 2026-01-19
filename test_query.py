@@ -31,7 +31,7 @@ agent = EnhancedEmployeeFinderAgent(db_manager=db, enable_ai=False)
 queries = [
     "I need help with BIA provisioning",
     "Who is in the billing team?",
-    "emma.wilson@onenz.co.nz",
+    "emma.wilson@sample.com",
 ]
 
 for query in queries:

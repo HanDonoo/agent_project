@@ -1,5 +1,5 @@
 # AI Agent Architecture
-## One NZ Employee Finder - Intelligent Routing System
+## Company Employee Finder - Intelligent Routing System
 
 ---
 
@@ -55,7 +55,7 @@ Response to User
 
 | Query Type | Example | Strategy | AI Needed? |
 |------------|---------|----------|------------|
-| **Direct Lookup** | "Find john.doe@onenz.co.nz" | Direct DB query | ❌ No |
+| **Direct Lookup** | "Find john.doe@sample.com" | Direct DB query | ❌ No |
 | **Simple Search** | "Find someone in billing team" | Pattern matching | ❌ No |
 | **Complex Intent** | "I need help with BIA provisioning" | AI understanding | ✅ Yes |
 | **Conversational** | "Thanks!" or "Can you explain?" | AI response | ✅ Yes |
@@ -93,7 +93,7 @@ Each tool is a discrete function that can be called independently:
 
 ### Tool 1: Direct Email Lookup
 ```python
-find_by_email("john.doe@onenz.co.nz")
+find_by_email("john.doe@sample.com")
 # Returns: Single employee or None
 # Speed: ~10ms
 ```
@@ -224,11 +224,11 @@ USE_AI_ROUTING=True  # Still uses router, but no LLM
 
 ### Example 1: Direct Lookup (No AI)
 ```
-User: "Find john.doe@onenz.co.nz"
+User: "Find john.doe@sample.com"
   ↓
 Router: DIRECT_LOOKUP (confidence: 1.0)
   ↓
-Tool: find_by_email("john.doe@onenz.co.nz")
+Tool: find_by_email("john.doe@sample.com")
   ↓
 Response: [John Doe's info] (10ms)
 ```

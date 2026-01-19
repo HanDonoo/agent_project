@@ -1,5 +1,5 @@
 """
-One NZ Employee Finder Agent
+Company Employee Finder Agent
 Core AI agent for finding the right people based on user queries
 Implements survey insights: ownership-first, role-before-person, time-saving focus
 """
@@ -16,7 +16,7 @@ from database.db_manager import DatabaseManager
 class EmployeeFinderAgent:
     """
     AI Agent for employee discovery and team formation
-    Designed based on One NZ survey insights
+    Designed based on Company survey insights
     """
     
     # Keywords for different domains (extracted from survey)

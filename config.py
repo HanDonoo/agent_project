@@ -1,5 +1,5 @@
 """
-Configuration for One NZ Employee Finder Agent
+Configuration for Company Employee Finder Agent
 """
 import os
 from pathlib import Path

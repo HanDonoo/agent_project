@@ -65,7 +65,7 @@ def create_mock_data():
         # Network Team
         {
             "name": "John Smith",
-            "email": "john.smith@onenz.co.nz",
+            "email": "john.smith@sample.com",
             "position": "Senior Network Engineer",
             "team": "Network Infrastructure",
             "function": "Technology",
@@ -75,29 +75,29 @@ def create_mock_data():
         },
         {
             "name": "Sarah Johnson",
-            "email": "sarah.johnson@onenz.co.nz",
+            "email": "sarah.johnson@sample.com",
             "position": "Network Security Specialist",
             "team": "Network Infrastructure",
             "function": "Technology",
             "business_unit": "Technology Services",
             "location": "Auckland",
-            "leader_email": "john.smith@onenz.co.nz"
+            "leader_email": "john.smith@sample.com"
         },
         {
             "name": "Mike Chen",
-            "email": "mike.chen@onenz.co.nz",
+            "email": "mike.chen@sample.com",
             "position": "Network Engineer",
             "team": "Network Infrastructure",
             "function": "Technology",
             "business_unit": "Technology Services",
             "location": "Wellington",
-            "leader_email": "john.smith@onenz.co.nz"
+            "leader_email": "john.smith@sample.com"
         },
         
         # Provisioning Team
         {
             "name": "Emma Wilson",
-            "email": "emma.wilson@onenz.co.nz",
+            "email": "emma.wilson@sample.com",
             "position": "BIA Provisioning Lead",
             "team": "Provisioning Services",
             "function": "Operations",
@@ -107,29 +107,29 @@ def create_mock_data():
         },
         {
             "name": "David Brown",
-            "email": "david.brown@onenz.co.nz",
+            "email": "david.brown@sample.com",
             "position": "Provisioning Specialist",
             "team": "Provisioning Services",
             "function": "Operations",
             "business_unit": "Service Delivery",
             "location": "Auckland",
-            "leader_email": "emma.wilson@onenz.co.nz"
+            "leader_email": "emma.wilson@sample.com"
         },
         {
             "name": "Lisa Taylor",
-            "email": "lisa.taylor@onenz.co.nz",
+            "email": "lisa.taylor@sample.com",
             "position": "Enterprise Provisioning Engineer",
             "team": "Provisioning Services",
             "function": "Operations",
             "business_unit": "Service Delivery",
             "location": "Wellington",
-            "leader_email": "emma.wilson@onenz.co.nz"
+            "leader_email": "emma.wilson@sample.com"
         },
         
         # Billing Team
         {
             "name": "Robert Davis",
-            "email": "robert.davis@onenz.co.nz",
+            "email": "robert.davis@sample.com",
             "position": "Billing Manager",
             "team": "Billing Operations",
             "function": "Finance",
@@ -139,29 +139,29 @@ def create_mock_data():
         },
         {
             "name": "Jennifer Lee",
-            "email": "jennifer.lee@onenz.co.nz",
+            "email": "jennifer.lee@sample.com",
             "position": "Billing Specialist",
             "team": "Billing Operations",
             "function": "Finance",
             "business_unit": "Finance & Billing",
             "location": "Auckland",
-            "leader_email": "robert.davis@onenz.co.nz"
+            "leader_email": "robert.davis@sample.com"
         },
         {
             "name": "Tom Anderson",
-            "email": "tom.anderson@onenz.co.nz",
+            "email": "tom.anderson@sample.com",
             "position": "Revenue Analyst",
             "team": "Billing Operations",
             "function": "Finance",
             "business_unit": "Finance & Billing",
             "location": "Christchurch",
-            "leader_email": "robert.davis@onenz.co.nz"
+            "leader_email": "robert.davis@sample.com"
         },
         
         # Security Team
         {
             "name": "Alice Martinez",
-            "email": "alice.martinez@onenz.co.nz",
+            "email": "alice.martinez@sample.com",
             "position": "Security Compliance Manager",
             "team": "Security & Compliance",
             "function": "Technology",
@@ -171,19 +171,19 @@ def create_mock_data():
         },
         {
             "name": "Chris Wong",
-            "email": "chris.wong@onenz.co.nz",
+            "email": "chris.wong@sample.com",
             "position": "Security Analyst",
             "team": "Security & Compliance",
             "function": "Technology",
             "business_unit": "Risk & Compliance",
             "location": "Wellington",
-            "leader_email": "alice.martinez@onenz.co.nz"
+            "leader_email": "alice.martinez@sample.com"
         },
         
         # Customer Support
         {
             "name": "Maria Garcia",
-            "email": "maria.garcia@onenz.co.nz",
+            "email": "maria.garcia@sample.com",
             "position": "Customer Support Lead",
             "team": "Customer Support",
             "function": "Customer Service",
@@ -193,13 +193,13 @@ def create_mock_data():
         },
         {
             "name": "James Wilson",
-            "email": "james.wilson@onenz.co.nz",
+            "email": "james.wilson@sample.com",
             "position": "Support Specialist",
             "team": "Customer Support",
             "function": "Customer Service",
             "business_unit": "Customer Experience",
             "location": "Hamilton",
-            "leader_email": "maria.garcia@onenz.co.nz"
+            "leader_email": "maria.garcia@sample.com"
         },
     ]
     
@@ -233,19 +233,19 @@ def create_mock_data():
     print(f"\n🎯 Deriving skills from positions and teams...")
     # The database manager should auto-derive skills, but let's add some manually too
     skills_data = [
-        (employee_map["john.smith@onenz.co.nz"], "network", "technical", 0.9, "position_title"),
-        (employee_map["john.smith@onenz.co.nz"], "infrastructure", "technical", 0.8, "team"),
-        (employee_map["sarah.johnson@onenz.co.nz"], "security", "technical", 0.9, "position_title"),
-        (employee_map["sarah.johnson@onenz.co.nz"], "network", "technical", 0.8, "team"),
-        (employee_map["emma.wilson@onenz.co.nz"], "provisioning", "technical", 0.9, "position_title"),
-        (employee_map["emma.wilson@onenz.co.nz"], "BIA", "technical", 0.9, "position_title"),
-        (employee_map["david.brown@onenz.co.nz"], "provisioning", "technical", 0.8, "position_title"),
-        (employee_map["lisa.taylor@onenz.co.nz"], "provisioning", "technical", 0.8, "position_title"),
-        (employee_map["lisa.taylor@onenz.co.nz"], "enterprise", "business", 0.7, "position_title"),
-        (employee_map["robert.davis@onenz.co.nz"], "billing", "business", 0.9, "position_title"),
-        (employee_map["jennifer.lee@onenz.co.nz"], "billing", "business", 0.8, "position_title"),
-        (employee_map["alice.martinez@onenz.co.nz"], "security", "technical", 0.9, "position_title"),
-        (employee_map["alice.martinez@onenz.co.nz"], "compliance", "business", 0.9, "position_title"),
+        (employee_map["john.smith@sample.com"], "network", "technical", 0.9, "position_title"),
+        (employee_map["john.smith@sample.com"], "infrastructure", "technical", 0.8, "team"),
+        (employee_map["sarah.johnson@sample.com"], "security", "technical", 0.9, "position_title"),
+        (employee_map["sarah.johnson@sample.com"], "network", "technical", 0.8, "team"),
+        (employee_map["emma.wilson@sample.com"], "provisioning", "technical", 0.9, "position_title"),
+        (employee_map["emma.wilson@sample.com"], "BIA", "technical", 0.9, "position_title"),
+        (employee_map["david.brown@sample.com"], "provisioning", "technical", 0.8, "position_title"),
+        (employee_map["lisa.taylor@sample.com"], "provisioning", "technical", 0.8, "position_title"),
+        (employee_map["lisa.taylor@sample.com"], "enterprise", "business", 0.7, "position_title"),
+        (employee_map["robert.davis@sample.com"], "billing", "business", 0.9, "position_title"),
+        (employee_map["jennifer.lee@sample.com"], "billing", "business", 0.8, "position_title"),
+        (employee_map["alice.martinez@sample.com"], "security", "technical", 0.9, "position_title"),
+        (employee_map["alice.martinez@sample.com"], "compliance", "business", 0.9, "position_title"),
     ]
 
     for emp_id, skill_name, skill_category, confidence, source in skills_data:
@@ -263,17 +263,17 @@ def create_mock_data():
     print(f"\n🎯 Creating role ownership assignments...")
     # Add ownership data
     ownership_data = [
-        (employee_map["emma.wilson@onenz.co.nz"], "BIA provisioning", "primary", "Provisioning Services"),
-        (employee_map["david.brown@onenz.co.nz"], "BIA provisioning", "backup", "Provisioning Services"),
-        (employee_map["lisa.taylor@onenz.co.nz"], "enterprise provisioning", "primary", "Provisioning Services"),
-        (employee_map["john.smith@onenz.co.nz"], "network infrastructure", "primary", "Network Infrastructure"),
-        (employee_map["sarah.johnson@onenz.co.nz"], "network security", "primary", "Network Infrastructure"),
-        (employee_map["mike.chen@onenz.co.nz"], "network infrastructure", "backup", "Network Infrastructure"),
-        (employee_map["robert.davis@onenz.co.nz"], "billing operations", "primary", "Billing Operations"),
-        (employee_map["jennifer.lee@onenz.co.nz"], "billing operations", "backup", "Billing Operations"),
-        (employee_map["alice.martinez@onenz.co.nz"], "security compliance", "primary", "Security & Compliance"),
-        (employee_map["chris.wong@onenz.co.nz"], "security compliance", "backup", "Security & Compliance"),
-        (employee_map["maria.garcia@onenz.co.nz"], "customer support", "primary", "Customer Support"),
+        (employee_map["emma.wilson@sample.com"], "BIA provisioning", "primary", "Provisioning Services"),
+        (employee_map["david.brown@sample.com"], "BIA provisioning", "backup", "Provisioning Services"),
+        (employee_map["lisa.taylor@sample.com"], "enterprise provisioning", "primary", "Provisioning Services"),
+        (employee_map["john.smith@sample.com"], "network infrastructure", "primary", "Network Infrastructure"),
+        (employee_map["sarah.johnson@sample.com"], "network security", "primary", "Network Infrastructure"),
+        (employee_map["mike.chen@sample.com"], "network infrastructure", "backup", "Network Infrastructure"),
+        (employee_map["robert.davis@sample.com"], "billing operations", "primary", "Billing Operations"),
+        (employee_map["jennifer.lee@sample.com"], "billing operations", "backup", "Billing Operations"),
+        (employee_map["alice.martinez@sample.com"], "security compliance", "primary", "Security & Compliance"),
+        (employee_map["chris.wong@sample.com"], "security compliance", "backup", "Security & Compliance"),
+        (employee_map["maria.garcia@sample.com"], "customer support", "primary", "Customer Support"),
     ]
 
     for emp_id, responsibility, ownership_type, team in ownership_data:

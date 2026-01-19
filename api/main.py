@@ -1,5 +1,5 @@
 """
-FastAPI application for One NZ Employee Finder Agent
+FastAPI application for Employee Finder Agent
 Compatible with OpenWebUI integration
 """
 
@@ -21,8 +21,8 @@ import config
 # =====================================================
 
 app = FastAPI(
-    title="One NZ Employee Finder Agent",
-    description="AI Agent for finding the right people across One NZ teams",
+    title="Employee Finder Agent",
+    description="AI Agent for finding the right people across teams",
     version="2.0.0"
 )
 
@@ -108,7 +108,7 @@ class FeedbackRequest(BaseModel):
 @app.get("/")
 async def root():
     return {
-        "service": "One NZ Employee Finder Agent",
+        "service": "Employee Finder Agent",
         "status": "running",
         "timestamp": datetime.now().isoformat()
     }
@@ -164,10 +164,10 @@ async def list_models():
         "object": "list",
         "data": [
             {
-                "id": "one-nz-employee-finder",
+                "id": "employee-finder",
                 "object": "model",
                 "created": int(datetime.now().timestamp()),
-                "owned_by": "one-nz"
+                "owned_by": "company"
             }
         ]
     }
@@ -181,7 +181,7 @@ async def chat_completions(request: Request):
         # Ignore stream flag (OpenWebUI sends it by default)
         _ = bool(body.get("stream", False))
 
-        model = body.get("model", "one-nz-employee-finder")
+        model = body.get("model", "employee-finder")
         messages = body.get("messages", [])
 
         if not messages:

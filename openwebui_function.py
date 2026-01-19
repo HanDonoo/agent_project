@@ -1,5 +1,5 @@
 """
-OpenWebUI Function for One NZ Employee Finder Agent
+OpenWebUI Function for Employee Finder Agent
 This can be imported as a custom function in OpenWebUI
 """
 
@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 
 class Tools:
-    """One NZ Employee Finder Tools"""
+    """Employee Finder Tools"""
     
     class Valves(BaseModel):
         """Configuration for the tool"""
@@ -27,10 +27,10 @@ class Tools:
         __user__: Optional[dict] = None
     ) -> str:
         """
-        Find One NZ employees by name, team, role, or responsibility.
-        
+        Find employees by name, team, role, or responsibility.
+
         Args:
-            query: Search query (e.g., "I need help with BIA provisioning", "billing team", "john.smith@onenz.co.nz")
+            query: Search query (e.g., "I need help with BIA provisioning", "billing team", "john.smith@sample.com")
         
         Returns:
             Formatted employee information with contact details

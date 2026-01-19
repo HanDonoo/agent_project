@@ -1,5 +1,5 @@
 """
-Database manager for One NZ Employee Directory
+Database manager for Company Employee Directory
 """
 import sqlite3
 import os

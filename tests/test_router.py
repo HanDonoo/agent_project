@@ -21,8 +21,8 @@ def test_router():
     # Test cases
     test_queries = [
         # Direct lookups
-        ("Find john.doe@onenz.co.nz", QueryType.DIRECT_LOOKUP),
-        ("What's the email for jane.smith@onenz.co.nz?", QueryType.DIRECT_LOOKUP),
+        ("Find john.doe@sample.com", QueryType.DIRECT_LOOKUP),
+        ("What's the email for jane.smith@sample.com?", QueryType.DIRECT_LOOKUP),
         
         # Simple searches
         ("Find someone in billing team", QueryType.SIMPLE_SEARCH),
@@ -115,7 +115,7 @@ def test_should_use_ai():
     print("=" * 60)
     
     test_cases = [
-        ("john.doe@onenz.co.nz", False, "Email lookup - no AI needed"),
+        ("john.doe@sample.com", False, "Email lookup - no AI needed"),
         ("Find someone in billing", False, "Simple search - no AI needed"),
         ("I need help with provisioning", True, "Complex intent - AI needed"),
         ("Thanks!", True, "Conversational - AI needed"),

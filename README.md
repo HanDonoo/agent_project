@@ -1,6 +1,6 @@
-# One NZ Employee Finder Agent 🤖
+# Employee Finder Agent 🤖
 
-An AI-powered agent designed to break down silos within One NZ by enabling internal employees to quickly identify and connect with the most relevant people across teams for any query or project.
+An AI-powered agent designed to break down silos by enabling employees to quickly identify and connect with the most relevant people across teams for any query or project.
 
 **Version 2.0** - Now with intelligent AI routing!
 
@@ -66,7 +66,7 @@ agent_project/
 
 | Query Type | Example | Strategy | AI Needed? | Speed |
 |------------|---------|----------|------------|-------|
-| Direct Lookup | "john.doe@onenz.co.nz" | Direct DB | ❌ No | ~10ms |
+| Direct Lookup | "john.doe@sample.com" | Direct DB | ❌ No | ~10ms |
 | Simple Search | "billing team" | Pattern Match | ❌ No | ~50ms |
 | Complex Intent | "help with BIA provisioning" | AI Understanding | ✅ Yes | ~800ms |
 | Conversational | "Thanks!" | AI Response | ✅ Yes | ~600ms |
@@ -164,7 +164,7 @@ LOCAL_LLM_MODEL=llama2
 ```
 ✅ Best for: Organizations with privacy requirements
 
-📖 **See [AI_ROUTER_SUMMARY.md](AI_ROUTER_SUMMARY.md) for detailed configuration guide**
+📖 **See [AI_ARCHITECTURE.md](AI_ARCHITECTURE.md) for detailed configuration guide**
 
 ## 📡 API Endpoints
 
@@ -196,7 +196,7 @@ Content-Type: application/json
 ### Other Endpoints
 
 - `GET /health` - Health check and statistics
-- `GET /search/employee?email=user@onenz.co.nz` - Direct employee search
+- `GET /search/employee?email=user@sample.com` - Direct employee search
 - `POST /feedback` - Submit feedback on recommendations
 - `GET /analytics/summary` - Usage analytics
 
@@ -204,9 +204,9 @@ Content-Type: application/json
 
 1. In OpenWebUI, go to **Settings** → **Connections**
 2. Add a new connection:
-   - **Name**: One NZ Employee Finder
+   - **Name**: Employee Finder
    - **Base URL**: `http://localhost:8000/v1`
-   - **Model**: `one-nz-employee-finder`
+   - **Model**: `employee-finder`
 
 3. Start chatting! Example queries:
    - "I need help with BIA provisioning"
@@ -231,11 +231,11 @@ Content-Type: application/json
 👥 Recommended Contacts:
 
 1. Jane Doe (Primary Owner)
-   📧 jane.doe@onenz.co.nz
+   📧 jane.doe@sample.com
    💼 Senior Provisioning Engineer
    👥 Team: Network Provisioning
    🎯 Match: 90% - Primary owner of: bia provisioning
-   ⬆️ Escalation: John Smith (john.smith@onenz.co.nz)
+   ⬆️ Escalation: John Smith (john.smith@sample.com)
 
 ...
 ```
@@ -285,18 +285,15 @@ OPENAI_API_KEY=              # Your OpenAI API key
 LOCAL_LLM_ENDPOINT=http://localhost:11434/v1
 ```
 
-See [AI_ROUTER_SUMMARY.md](AI_ROUTER_SUMMARY.md) for detailed AI configuration.
+See [AI_ARCHITECTURE.md](AI_ARCHITECTURE.md) for detailed AI configuration.
 
 ## 📚 Documentation
 
 - **[README.md](README.md)** - This file (overview and quick start)
-- **[AI_ARCHITECTURE.md](AI_ARCHITECTURE.md)** - Detailed AI router architecture
-- **[AI_ROUTER_SUMMARY.md](AI_ROUTER_SUMMARY.md)** - AI routing explained (中文)
-- **[USAGE_EXAMPLES.md](USAGE_EXAMPLES.md)** - Query examples and performance
 - **[QUICKSTART.md](QUICKSTART.md)** - 5-minute setup guide
+- **[AI_ARCHITECTURE.md](AI_ARCHITECTURE.md)** - Detailed AI router architecture
 - **[TECHNICAL_DESIGN.md](TECHNICAL_DESIGN.md)** - Technical architecture
-- **[PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)** - Project overview and impact
-- **[IMPLEMENTATION_CHECKLIST.md](IMPLEMENTATION_CHECKLIST.md)** - Deployment checklist
+- **[OPENWEBUI_INTEGRATION.md](OPENWEBUI_INTEGRATION.md)** - OpenWebUI integration guide
 
 ## 🧪 Testing
 
@@ -310,11 +307,11 @@ python tests/test_agent.py
 
 ## 📝 License
 
-Internal use only - One NZ
+MIT License
 
-## 👥 Team
+## 👥 Contributors
 
-Team Rua | Kevin, Zuki, Zoea, Jack, Eden
+Open Source Project
 
 ---
 

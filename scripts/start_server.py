@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Start the One NZ Employee Finder Agent API server
+Start the Company Employee Finder Agent API server
 """
 import sys
 from pathlib import Path
@@ -14,7 +14,7 @@ from config import API_HOST, API_PORT, API_RELOAD, LOG_LEVEL
 
 def main():
     print("=" * 60)
-    print("One NZ Employee Finder Agent")
+    print("Company Employee Finder Agent")
     print("=" * 60)
     print(f"Starting server on http://{API_HOST}:{API_PORT}")
     print(f"API Documentation: http://{API_HOST}:{API_PORT}/docs")

@@ -1,5 +1,5 @@
 # Quick Start Guide
-## One NZ Employee Finder Agent
+## Company Employee Finder Agent
 
 Get up and running in 5 minutes! ⚡
 
@@ -41,7 +41,7 @@ Your Excel file should have these columns (exact names):
 | Column Name | Required | Example |
 |-------------|----------|---------|
 | Formal Name | ✅ Yes | John Smith |
-| Email Address | ✅ Yes | john.smith@onenz.co.nz |
+| Email Address | ✅ Yes | john.smith@sample.com |
 | Position Title | ✅ Yes | Senior Network Engineer |
 | People Leader Formal Name | ⚪ Optional | Jane Doe |
 | Function (Label) | ⚪ Optional | Technology |
@@ -54,11 +54,11 @@ Your Excel file should have these columns (exact names):
 ```
 Formal Name              | Email Address              | Position Title                | Team
 -------------------------|----------------------------|-------------------------------|------------------
-Alice Johnson            | alice.j@onenz.co.nz       | BIA Provisioning Lead         | Provisioning
-Bob Wilson               | bob.w@onenz.co.nz         | Network Engineer              | Network Ops
-Carol Davis              | carol.d@onenz.co.nz       | Security Compliance Officer   | Security
-David Chen               | david.c@onenz.co.nz       | Customer Support Lead         | Support
-Emma Thompson            | emma.t@onenz.co.nz        | Sales Engineer                | Sales
+Alice Johnson            | alice.j@sample.com       | BIA Provisioning Lead         | Provisioning
+Bob Wilson               | bob.w@sample.com         | Network Engineer              | Network Ops
+Carol Davis              | carol.d@sample.com       | Security Compliance Officer   | Security
+David Chen               | david.c@sample.com       | Customer Support Lead         | Support
+Emma Thompson            | emma.t@sample.com        | Sales Engineer                | Sales
 ```
 
 ---
@@ -71,7 +71,7 @@ python scripts/import_employees.py path/to/your/employees.xlsx
 
 # You should see output like:
 # ============================================================
-# One NZ Employee Directory - Data Import
+# Company Employee Directory - Data Import
 # ============================================================
 # Importing from: employees.xlsx
 # First pass: Importing employees...
@@ -100,7 +100,7 @@ python scripts/start_server.py
 
 # You should see:
 # ============================================================
-# One NZ Employee Finder Agent
+# Company Employee Finder Agent
 # ============================================================
 # Starting server on http://0.0.0.0:8000
 # API Documentation: http://0.0.0.0:8000/docs
@@ -158,9 +158,9 @@ If you're using OpenWebUI:
 1. Open OpenWebUI settings
 2. Go to **Connections** → **Add Connection**
 3. Configure:
-   - **Name**: One NZ Employee Finder
+   - **Name**: Company Employee Finder
    - **Base URL**: `http://localhost:8000/v1`
-   - **Model**: `one-nz-employee-finder`
+   - **Model**: `company-employee-finder`
 4. Save and start chatting!
 
 **Example queries in OpenWebUI**:
@@ -237,7 +237,7 @@ curl http://localhost:8000/health
 curl http://localhost:8000/health
 
 # Search for specific employee
-curl "http://localhost:8000/search/employee?email=john@onenz.co.nz"
+curl "http://localhost:8000/search/employee?email=john@sample.com"
 
 # Get analytics
 curl http://localhost:8000/analytics/summary

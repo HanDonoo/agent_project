@@ -9,7 +9,7 @@ import re
 
 class QueryType(Enum):
     """Types of queries the system can handle"""
-    DIRECT_LOOKUP = "direct_lookup"          # "Find john.doe@onenz.co.nz"
+    DIRECT_LOOKUP = "direct_lookup"          # "Find john.doe@sample.com"
     SIMPLE_SEARCH = "simple_search"          # "Find someone in billing team"
     COMPLEX_INTENT = "complex_intent"        # "I need help setting up BIA provisioning"
     CONVERSATIONAL = "conversational"        # "Thanks!" or "Can you explain more?"

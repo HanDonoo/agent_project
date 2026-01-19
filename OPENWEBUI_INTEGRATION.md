@@ -1,146 +1,146 @@
-# OpenWebUI 集成指南 🔌
+# OpenWebUI Integration Guide 🔌
 
-完整的OpenWebUI集成教程，让你的One NZ Employee Finder Agent在OpenWebUI中使用。
+Complete OpenWebUI integration tutorial for the Employee Finder Agent.
 
 ---
 
-## 📋 前提条件
+## 📋 Prerequisites
 
-### 1. 确保Agent服务器正在运行
+### 1. Ensure Agent Server is Running
 
 ```bash
-# 启动服务器
+# Start server
 cd /path/to/agent_project
 python scripts/start_server.py
 
-# 或使用uvicorn
+# Or use uvicorn
 uvicorn api.main:app --host 0.0.0.0 --port 8000
 ```
 
-### 2. 验证服务器状态
+### 2. Verify Server Status
 
 ```bash
-# 检查健康状态
+# Check health status
 curl http://localhost:8000/health
 
-# 应该返回类似：
+# Should return:
 # {"status":"healthy","database":"connected","ai_routing_enabled":true,...}
 ```
 
-### 3. 确保有测试数据
+### 3. Ensure Test Data Exists
 
 ```bash
-# 如果还没有数据，运行：
+# If no data exists, run:
 python scripts/create_mock_data.py
 ```
 
-### 4. OpenWebUI已安装
+### 4. OpenWebUI Installed
 
-如果还没安装OpenWebUI：
+If OpenWebUI is not installed yet:
 
 ```bash
-# 使用Docker安装（推荐）
+# Install using Docker (recommended)
 docker run -d -p 3000:8080 \
   --name openwebui \
   ghcr.io/open-webui/open-webui:main
 
-# 或使用pip安装
+# Or install using pip
 pip install open-webui
 open-webui serve
 ```
 
-访问：http://localhost:3000
+Visit: http://localhost:3000
 
 ---
 
-## 🚀 方法一：作为 OpenAI-Compatible API（推荐）
+## 🚀 Method 1: As OpenAI-Compatible API (Recommended)
 
-我们的Agent实现了OpenAI兼容的 `/v1/chat/completions` 端点，可以直接作为自定义模型使用。
+Our Agent implements an OpenAI-compatible `/v1/chat/completions` endpoint and can be used directly as a custom model.
 
-### 步骤 1: 打开OpenWebUI设置
+### Step 1: Open OpenWebUI Settings
 
-1. 访问 http://localhost:3000
-2. 登录OpenWebUI
-3. 点击左上角的 **头像** 或 **设置图标** ⚙️
-4. 选择 **Admin Panel（管理面板）** 或 **Settings（设置）**
+1. Visit http://localhost:3000
+2. Log in to OpenWebUI
+3. Click the **avatar** or **settings icon** ⚙️ in the top left
+4. Select **Admin Panel** or **Settings**
 
-### 步骤 2: 添加自定义OpenAI API
+### Step 2: Add Custom OpenAI API
 
-在Admin Panel中：
+In the Admin Panel:
 
-1. 找到 **Connections** 或 **External Connections** 部分
-2. 找到 **OpenAI API** 配置区域
-3. 点击 **Add** 或 **+** 添加新连接
+1. Find the **Connections** or **External Connections** section
+2. Find the **OpenAI API** configuration area
+3. Click **Add** or **+** to add a new connection
 
-### 步骤 3: 填写配置信息
+### Step 3: Fill in Configuration Information
 
 ```
-Name: One NZ Employee Finder
+Name: Company Employee Finder
 Base URL: http://localhost:8000/v1
 API Key: sk-dummy-key-not-required
 ```
 
-**重要说明：**
-- **Base URL**: 必须是 `http://localhost:8000/v1`（注意 `/v1` 后缀）
-- **API Key**: 我们的API不验证Key，但OpenWebUI要求填写，随便填一个即可
-- **如果在不同机器上**:
-  - 将 `localhost` 改为Agent服务器的IP地址
-  - 例如：`http://192.168.1.100:8000/v1`
-  - 如果用Docker，使用 `http://host.docker.internal:8000/v1`
+**Important Notes:**
+- **Base URL**: Must be `http://localhost:8000/v1` (note the `/v1` suffix)
+- **API Key**: Our API doesn't verify keys, but OpenWebUI requires one - fill in any value
+- **If on different machines**:
+  - Change `localhost` to the Agent server's IP address
+  - Example: `http://192.168.1.100:8000/v1`
+  - If using Docker, use `http://host.docker.internal:8000/v1`
 
-### 步骤 4: 保存并刷新模型列表
+### Step 4: Save and Refresh Model List
 
-1. 点击 **Save** 保存配置
-2. 返回聊天界面
-3. 点击顶部的 **模型选择器**（通常显示当前模型名）
-4. 在下拉列表中找到 `one-nz-employee-finder`
-5. 选择这个模型
+1. Click **Save** to save the configuration
+2. Return to the chat interface
+3. Click the **model selector** at the top (usually shows current model name)
+4. Find `employee-finder` in the dropdown list
+5. Select this model
 
-### 步骤 5: 开始对话！
+### Step 5: Start Chatting!
 
-现在你可以直接在OpenWebUI中使用Agent了！
+You can now use the Agent!
 
 ---
 
-## 🧪 测试查询
+## 🧪 Test Queries
 
-在OpenWebUI中尝试以下查询：
+Try the following queries in OpenWebUI:
 
-### 1. 直接查找（快速，不用AI）
+### 1. Direct Lookup (Fast, No AI)
 ```
-Find john.smith@onenz.co.nz
+Find john.smith@sample.com
 ```
-**预期：** ~10ms响应，返回John Smith的信息
+**Expected:** ~10ms response, returns John Smith's information
 
-### 2. 简单搜索（模式匹配）
+### 2. Simple Search (Pattern Matching)
 ```
 Who is in the billing team?
 ```
-**预期：** ~50ms响应，返回Billing Operations团队成员
+**Expected:** ~50ms response, returns Billing Operations team members
 
-### 3. 复杂查询（使用AI理解，如果启用）
+### 3. Complex Query (Uses AI Understanding, if enabled)
 ```
 I need help with BIA provisioning for a new enterprise customer
 ```
-**预期：** 返回Emma Wilson（Primary Owner）和David Brown（Backup）
+**Expected:** Returns Emma Wilson (Primary Owner) and David Brown (Backup)
 
-### 4. 职责查询
+### 4. Responsibility Query
 ```
 Who handles network security?
 ```
-**预期：** 返回Sarah Johnson（Network Security Specialist）
+**Expected:** Returns Sarah Johnson (Network Security Specialist)
 
-### 5. 对话式
+### 5. Conversational
 ```
 Thanks! Can you also tell me who their manager is?
 ```
-**预期：** AI理解上下文，返回相关人员的经理信息
+**Expected:** AI understands context and returns manager information
 
 ---
 
-## ⚙️ 配置选项
+## ⚙️ Configuration Options
 
-### 选项 A: 不使用LLM（默认，最快）
+### Option A: No LLM (Default, Fastest)
 
 ```bash
 # .env
@@ -148,13 +148,13 @@ USE_AI_ROUTING=True
 ENABLE_LLM=False
 ```
 
-**特点：**
-- ✅ 速度最快（10-100ms）
-- ✅ 无需配置LLM
-- ✅ 适合简单查询
-- ❌ 复杂查询理解能力有限
+**Features:**
+- ✅ Fastest speed (10-100ms)
+- ✅ No LLM configuration needed
+- ✅ Suitable for simple queries
+- ❌ Limited complex query understanding
 
-### 选项 B: 使用OpenAI（最智能）
+### Option B: Use OpenAI (Most Intelligent)
 
 ```bash
 # .env
@@ -165,14 +165,14 @@ OPENAI_API_KEY=sk-your-actual-key-here
 OPENAI_MODEL=gpt-3.5-turbo
 ```
 
-**特点：**
-- ✅ 理解复杂查询
-- ✅ 自然对话能力
-- ✅ 上下文理解
-- ❌ 需要API费用
-- ❌ 稍慢（~800ms）
+**Features:**
+- ✅ Understands complex queries
+- ✅ Natural conversation ability
+- ✅ Context understanding
+- ❌ Requires API fees
+- ❌ Slightly slower (~800ms)
 
-### 选项 C: 使用本地LLM（隐私优先）
+### Option C: Use Local LLM (Privacy First)
 
 ```bash
 # .env
@@ -183,36 +183,36 @@ LOCAL_LLM_ENDPOINT=http://localhost:11434/v1
 LOCAL_LLM_MODEL=llama2
 ```
 
-**前提：** 需要先安装Ollama
+**Prerequisites:** Install Ollama first
 ```bash
-# 安装 Ollama
+# Install Ollama
 curl -fsSL https://ollama.com/install.sh | sh
 
-# 下载模型
+# Download model
 ollama pull llama2
 
-# 启动 Ollama（默认在11434端口）
+# Start Ollama (default port 11434)
 ollama serve
 ```
 
-**特点：**
-- ✅ 数据不出本地
-- ✅ 免费
-- ✅ 离线可用
-- ❌ 需要本地GPU/CPU资源
-- ❌ 较慢（1-3秒）
+**Features:**
+- ✅ Data stays local
+- ✅ Free
+- ✅ Works offline
+- ❌ Requires local GPU/CPU resources
+- ❌ Slower (1-3 seconds)
 
 ---
 
-## 🔍 验证集成
+## 🔍 Verify Integration
 
-### 1. 检查服务器状态
+### 1. Check Server Status
 
 ```bash
 curl http://localhost:8000/health
 ```
 
-**预期响应：**
+**Expected Response:**
 ```json
 {
   "status": "healthy",
@@ -226,26 +226,26 @@ curl http://localhost:8000/health
 }
 ```
 
-### 2. 测试OpenAI兼容端点
+### 2. Test OpenAI Compatible Endpoint
 
 ```bash
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "one-nz-employee-finder",
+    "model": "employee-finder",
     "messages": [
       {"role": "user", "content": "I need help with BIA provisioning"}
     ]
   }'
 ```
 
-**预期响应：**
+**Expected Response:**
 ```json
 {
   "id": "chatcmpl-xxx",
   "object": "chat.completion",
   "created": 1234567890,
-  "model": "one-nz-employee-finder",
+  "model": "employee-finder",
   "choices": [
     {
       "index": 0,
@@ -261,122 +261,122 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 
 ---
 
-## 🎨 在 OpenWebUI 中的使用体验
+## 🎨 User Experience in OpenWebUI
 
-### 对话示例
+### Conversation Examples
 
-**用户：** "I need help with BIA provisioning"
+**User:** "I need help with BIA provisioning"
 
-**Agent：** 
+**Agent:**
 ```
 👥 Recommended Contacts:
 
 1. Emma Wilson (Primary Owner)
-   📧 emma.wilson@onenz.co.nz
+   📧 emma.wilson@sample.com
    💼 BIA Provisioning Lead
    👥 Team: Provisioning Services
    🎯 Match: 90% - Primary owner of: BIA provisioning
-   ⬆️ Escalation: Emma Wilson (emma.wilson@onenz.co.nz)
+   ⬆️ Escalation: Emma Wilson (emma.wilson@sample.com)
 
 2. David Brown (Backup)
-   📧 david.brown@onenz.co.nz
+   📧 david.brown@sample.com
    💼 Provisioning Specialist
    👥 Team: Provisioning Services
    🎯 Match: 60% - Backup for: BIA provisioning
 ```
 
-**用户：** "What about network security?"
+**User:** "What about network security?"
 
-**Agent：**
+**Agent:**
 ```
 👥 Recommended Contacts:
 
 1. Sarah Johnson (Primary Owner)
-   📧 sarah.johnson@onenz.co.nz
+   📧 sarah.johnson@sample.com
    💼 Network Security Specialist
    👥 Team: Network Infrastructure
    🎯 Match: 90% - Primary owner of: network security
-   ⬆️ Escalation: John Smith (john.smith@onenz.co.nz)
+   ⬆️ Escalation: John Smith (john.smith@sample.com)
 ```
 
 ---
 
-## 🐛 故障排除
+## 🐛 Troubleshooting
 
-### 问题 1: OpenWebUI 无法连接
+### Issue 1: OpenWebUI Cannot Connect
 
-**检查：**
+**Check:**
 ```bash
-# 确认服务器正在运行
+# Confirm server is running
 curl http://localhost:8000/health
 
-# 检查端口是否被占用
+# Check if port is in use
 lsof -i :8000
 ```
 
-**解决：**
-- 确保服务器已启动：`python scripts/start_server.py`
-- 检查防火墙设置
-- 如果在不同机器上，确保网络可达
+**Solution:**
+- Ensure server is started: `python scripts/start_server.py`
+- Check firewall settings
+- If on different machines, ensure network is reachable
 
-### 问题 2: 返回空结果
+### Issue 2: Returns Empty Results
 
-**检查：**
+**Check:**
 ```bash
-# 确认数据库有数据
+# Confirm database has data
 python scripts/create_mock_data.py
 ```
 
-### 问题 3: LLM 不工作
+### Issue 3: LLM Not Working
 
-**检查：**
+**Check:**
 ```bash
-# 查看 .env 配置
+# View .env configuration
 cat .env | grep LLM
 
-# 如果使用 OpenAI，测试 API Key
+# If using OpenAI, test API key
 curl https://api.openai.com/v1/models \
   -H "Authorization: Bearer $OPENAI_API_KEY"
 
-# 如果使用本地 LLM，测试 Ollama
+# If using local LLM, test Ollama
 curl http://localhost:11434/api/tags
 ```
 
 ---
 
-## 📊 性能优化建议
+## 📊 Performance Optimization Recommendations
 
-### 1. 对于大多数查询（推荐）
+### 1. For Most Queries (Recommended)
 ```bash
 USE_AI_ROUTING=True
 ENABLE_LLM=False
 ```
-- 38.5%的查询直接查数据库（10-50ms）
-- 其余使用模式匹配（50-150ms）
+- 38.5% of queries go directly to database (10-50ms)
+- Rest use pattern matching (50-150ms)
 
-### 2. 对于复杂业务场景
+### 2. For Complex Business Scenarios
 ```bash
 USE_AI_ROUTING=True
 ENABLE_LLM=True
 LLM_PROVIDER=openai
 ```
-- 简单查询仍然快速（10-50ms）
-- 复杂查询使用AI理解（~800ms）
+- Simple queries remain fast (10-50ms)
+- Complex queries use AI understanding (~800ms)
 
 ---
 
-## 🎯 下一步
+## 🎯 Next Steps
 
-1. ✅ 在OpenWebUI中测试基本查询
-2. ✅ 根据需要调整AI配置
-3. ✅ 导入真实员工数据（替换Mock数据）
-4. ✅ 收集用户反馈
-5. ✅ 监控使用情况和性能
+1. ✅ Test basic queries in OpenWebUI
+2. ✅ Adjust AI configuration as needed
+3. ✅ Import real employee data (replace mock data)
+4. ✅ Collect user feedback
+5. ✅ Monitor usage and performance
 
 ---
 
-**需要帮助？** 查看其他文档：
-- [AI_ROUTER_SUMMARY.md](AI_ROUTER_SUMMARY.md) - Router工作原理
-- [USAGE_EXAMPLES.md](USAGE_EXAMPLES.md) - 更多查询示例
-- [README.md](README.md) - 完整项目文档
+**Need Help?** See other documentation:
+- [AI_ARCHITECTURE.md](AI_ARCHITECTURE.md) - How the router works
+- [TECHNICAL_DESIGN.md](TECHNICAL_DESIGN.md) - Technical architecture
+- [README.md](README.md) - Complete project documentation
 

@@ -33,7 +33,7 @@ class EmployeeSearchTools:
             Employee info dict or None
             
         Example:
-            find_by_email("john.doe@onenz.co.nz")
+            find_by_email("john.doe@sample.com")
         """
         employee = self.db.get_employee_by_email(email)
         if employee:

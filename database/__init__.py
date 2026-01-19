@@ -1,4 +1,4 @@
-"""Database package for One NZ Employee Finder Agent"""
+"""Database package for Company Employee Finder Agent"""
 from .db_manager import DatabaseManager
 from .models import Employee, EmployeeSkill, RoleOwnership, RecommendationResult, AgentResponse
 

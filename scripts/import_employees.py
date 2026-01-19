@@ -42,7 +42,7 @@ def main():
         sys.exit(1)
     
     logger.info("=" * 60)
-    logger.info("One NZ Employee Directory - Data Import")
+    logger.info("Company Employee Directory - Data Import")
     logger.info("=" * 60)
     
     # Initialize database and importer

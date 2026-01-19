@@ -1,2 +1,2 @@
-"""Scripts package for One NZ Employee Finder Agent"""
+"""Scripts package for Company Employee Finder Agent"""
 

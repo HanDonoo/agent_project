@@ -1,2 +1,2 @@
-"""API package for One NZ Employee Finder Agent"""
+"""API package for Company Employee Finder Agent"""
 

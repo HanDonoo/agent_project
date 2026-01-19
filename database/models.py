@@ -1,5 +1,5 @@
 """
-Data models for One NZ Employee Directory Agent
+Data models for Company Employee Directory Agent
 """
 from dataclasses import dataclass, field
 from typing import Optional, List

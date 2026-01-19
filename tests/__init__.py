@@ -1,2 +1,2 @@
-"""Tests package for One NZ Employee Finder Agent"""
+"""Tests package for Company Employee Finder Agent"""
 

@@ -1,11 +1,11 @@
 # Technical Design Document
-## One NZ Employee Finder Agent
+## Company Employee Finder Agent
 
 ---
 
 ## 1. Executive Summary
 
-This document outlines the technical architecture and design decisions for the One NZ Employee Finder Agent, an AI-powered system designed to help employees quickly find the right people across the organization.
+This document outlines the technical architecture and design decisions for the Company Employee Finder Agent, an AI-powered system designed to help employees quickly find the right people across the organization.
 
 ### Key Design Principles (Based on Survey Insights)
 
