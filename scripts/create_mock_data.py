@@ -201,6 +201,38 @@ def create_mock_data():
             "location": "Hamilton",
             "leader_email": "maria.garcia@sample.com"
         },
+
+        # IT Support / IT Operations
+        {
+            "name": "Kevin Brown",
+            "email": "kevin.brown@sample.com",
+            "position": "IT Support Manager",
+            "team": "IT Operations",
+            "function": "Technology",
+            "business_unit": "Technology Services",
+            "location": "Auckland",
+            "is_leader": True
+        },
+        {
+            "name": "Rachel Green",
+            "email": "rachel.green@sample.com",
+            "position": "IT Support Specialist",
+            "team": "IT Operations",
+            "function": "Technology",
+            "business_unit": "Technology Services",
+            "location": "Wellington",
+            "leader_email": "kevin.brown@sample.com"
+        },
+        {
+            "name": "Daniel Kim",
+            "email": "daniel.kim@sample.com",
+            "position": "Help Desk Technician",
+            "team": "IT Operations",
+            "function": "Technology",
+            "business_unit": "Technology Services",
+            "location": "Auckland",
+            "leader_email": "kevin.brown@sample.com"
+        },
     ]
     
     print(f"\n📝 Creating {len(employees_data)} employees...")
@@ -246,6 +278,11 @@ def create_mock_data():
         (employee_map["jennifer.lee@sample.com"], "billing", "business", 0.8, "position_title"),
         (employee_map["alice.martinez@sample.com"], "security", "technical", 0.9, "position_title"),
         (employee_map["alice.martinez@sample.com"], "compliance", "business", 0.9, "position_title"),
+        (employee_map["kevin.brown@sample.com"], "IT support", "technical", 0.9, "position_title"),
+        (employee_map["kevin.brown@sample.com"], "help desk", "technical", 0.8, "team"),
+        (employee_map["rachel.green@sample.com"], "IT support", "technical", 0.8, "position_title"),
+        (employee_map["daniel.kim@sample.com"], "help desk", "technical", 0.9, "position_title"),
+        (employee_map["daniel.kim@sample.com"], "IT support", "technical", 0.7, "team"),
     ]
 
     for emp_id, skill_name, skill_category, confidence, source in skills_data:
@@ -274,6 +311,9 @@ def create_mock_data():
         (employee_map["alice.martinez@sample.com"], "security compliance", "primary", "Security & Compliance"),
         (employee_map["chris.wong@sample.com"], "security compliance", "backup", "Security & Compliance"),
         (employee_map["maria.garcia@sample.com"], "customer support", "primary", "Customer Support"),
+        (employee_map["kevin.brown@sample.com"], "IT support", "primary", "IT Operations"),
+        (employee_map["rachel.green@sample.com"], "IT support", "backup", "IT Operations"),
+        (employee_map["daniel.kim@sample.com"], "help desk", "primary", "IT Operations"),
     ]
 
     for emp_id, responsibility, ownership_type, team in ownership_data:
