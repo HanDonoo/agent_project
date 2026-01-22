@@ -1,320 +1,145 @@
-# Employee Finder Agent 🤖
+# Employee Finder Agent Project
 
-An AI-powered agent designed to break down silos by enabling employees to quickly identify and connect with the most relevant people across teams for any query or project.
-
-**Version 2.0** - Now with intelligent AI routing!
-
-## 🎯 Purpose
-
-This agent promotes collaboration, accelerates problem-solving, and fosters innovation by ensuring employees can easily form cross-functional teams aligned to their objectives.
-
-## ✨ Key Features
-
-Based on comprehensive user research and survey insights:
-
-- **🤖 Intelligent AI Router**: Automatically decides when to use AI vs direct queries for optimal speed and accuracy
-- **🎯 Ownership-First Matching**: Finds people who are actually responsible for tasks, not just experts
-- **👥 Role-Before-Person**: Shows recommended roles/teams first, then specific contacts
-- **⚡ Time-Saving Focus**: Reduces average search time from 39.3 minutes/week to under 1 minute
-- **🔄 Backup & Escalation**: Shows people leaders for easy escalation
-- **🔒 Privacy-Compliant**: No PII storage, session-only data processing
-- **🤝 Teams Integration Ready**: Designed to integrate with Microsoft Teams
-- **🔌 Flexible LLM Support**: Works with OpenAI, local LLMs (Ollama), or no LLM at all
-
-## 📊 Architecture
-
-### System Overview
-
-```
-User Query → Router → Strategy Selection → Tools → Database → Response
-                ↓
-        Direct / Pattern / AI
-```
-
-**Key Components:**
-
-1. **Router** (`agent/router.py`) - Classifies queries and decides strategy
-2. **Tools** (`agent/tools.py`) - 7 database search functions
-3. **LLM Integration** (`agent/llm_integration.py`) - Optional AI understanding
-4. **Enhanced Agent** (`agent/ai_agent.py`) - Orchestrates the workflow
-
-### File Structure
+## 📁 项目结构
 
 ```
 agent_project/
-├── database/           # SQLite database with FTS5 full-text search
-│   ├── schema.sql     # Database schema
-│   ├── models.py      # Data models
-│   └── db_manager.py  # Database operations
-├── agent/             # Core AI agent logic
-│   ├── router.py      # 🆕 Intelligent query routing
-│   ├── tools.py       # 🆕 Database search tools
-│   ├── llm_integration.py  # 🆕 LLM provider support
-│   ├── ai_agent.py    # 🆕 Enhanced AI agent
-│   └── employee_finder_agent.py  # Basic pattern-matching agent
-├── api/               # FastAPI REST API
-│   └── main.py        # API endpoints (OpenWebUI compatible)
-├── data_import/       # Excel data import utilities
-│   └── excel_importer.py
-├── scripts/           # Utility scripts
-│   ├── import_employees.py
-│   └── start_server.py
-└── config.py          # Configuration
+├── EC_Proj/          # 主项目 - EC Employee Skills Finder (当前版本)
+│   ├── EC_api/       # FastAPI 服务器 (OpenWebUI 集成)
+│   ├── EC_database/  # 数据库管理
+│   ├── EC_skills_agent/  # AI 技能推理引擎
+│   ├── data/         # 数据库文件 (200 员工)
+│   ├── data_creation/  # 数据生成脚本
+│   ├── test/         # 测试文件
+│   │   ├── EC_skills_interpreter_test.py
+│   │   ├── EC_recommender_test.py
+│   │   ├── check_setup.py
+│   │   └── test_api.sh
+│   ├── README.md     # 完整文档
+│   ├── QUICKSTART.md # 快速开始指南
+│   ├── requirements.txt
+│   ├── start_server.py
+│   └── docker-compose.yml
+│
+└── V1/               # 旧版本 - 简单关键词匹配系统
+    ├── agent/        # 旧版 Agent 逻辑
+    ├── api/          # 旧版 API
+    ├── database/     # 旧版数据库
+    ├── scripts/      # 旧版脚本
+    ├── tests/        # 旧版测试
+    └── README.md     # 旧版文档
 ```
 
-### Query Routing Logic
+## 🚀 快速开始
 
-| Query Type | Example | Strategy | AI Needed? | Speed |
-|------------|---------|----------|------------|-------|
-| Direct Lookup | "john.doe@sample.com" | Direct DB | ❌ No | ~10ms |
-| Simple Search | "billing team" | Pattern Match | ❌ No | ~50ms |
-| Complex Intent | "help with BIA provisioning" | AI Understanding | ✅ Yes | ~800ms |
-| Conversational | "Thanks!" | AI Response | ✅ Yes | ~600ms |
-
-📖 **See [AI_ARCHITECTURE.md](AI_ARCHITECTURE.md) for detailed architecture documentation**
-
-## 🗄️ Database Design
-
-**SQLite** with the following tables:
-
-1. **employees** - Core employee data
-2. **employee_skills** - Derived skills (auto-extracted from roles/teams)
-3. **role_ownership** - Ownership mapping (primary/backup/escalation)
-4. **query_log** - Analytics (session-only, privacy-compliant)
-5. **employees_fts** - Full-text search index (FTS5)
-
-## 🚀 Quick Start
-
-### 1. Installation
+### 使用 EC_Proj (推荐)
 
 ```bash
-# Clone the repository
-cd agent_project
+# 1. 进入 EC_Proj 目录
+cd EC_Proj
 
-# Create virtual environment
-python3 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+# 2. 查看快速开始指南
+cat QUICKSTART.md
 
-# Install dependencies
+# 3. 检查环境
+python test/check_setup.py
+
+# 4. 启动服务器
+python start_server.py
+```
+
+服务器将在 **http://localhost:8001** 运行
+
+### API 端点
+
+- **健康检查**: `GET http://localhost:8001/health`
+- **OpenWebUI 模型列表**: `GET http://localhost:8001/v1/models`
+- **OpenWebUI 聊天**: `POST http://localhost:8001/v1/chat/completions`
+- **直接查询**: `POST http://localhost:8001/query`
+- **API 文档**: `http://localhost:8001/docs`
+
+## 📚 文档
+
+- **EC_Proj 完整文档**: [EC_Proj/README.md](EC_Proj/README.md)
+- **快速开始指南**: [EC_Proj/QUICKSTART.md](EC_Proj/QUICKSTART.md)
+- **V1 旧版文档**: [V1/README.md](V1/README.md)
+
+## 🆚 版本对比
+
+| 特性 | V1 (旧版) | EC_Proj (当前) |
+|------|-----------|----------------|
+| **搜索方式** | 关键词匹配 | AI 驱动的技能推理 |
+| **技能系统** | 简单标签 | 4 级熟练度系统 |
+| **员工数量** | 16 | 200 |
+| **AI 引擎** | 无 | Ollama (llama3.1:8b) |
+| **OpenWebUI** | 基础集成 | 完整集成 |
+| **复杂度分析** | 无 | 智能复杂度分析 |
+| **评分系统** | 简单匹配 | 加权评分算法 |
+
+## 🧪 测试
+
+```bash
+# 运行环境检查
+cd EC_Proj
+python test/check_setup.py
+
+# 运行 API 测试
+cd EC_Proj
+bash test/test_api.sh
+
+# 运行技能推理测试
+cd EC_Proj
+python test/EC_skills_interpreter_test.py
+
+# 运行推荐引擎测试
+cd EC_Proj
+python test/EC_recommender_test.py
+```
+
+## 🔧 依赖
+
+### EC_Proj 依赖
+
+- Python 3.9+
+- FastAPI
+- Uvicorn
+- Pydantic
+- Requests
+- Ollama (llama3.1:8b)
+
+### 安装
+
+```bash
+cd EC_Proj
 pip install -r requirements.txt
-
-# Copy environment configuration
-cp .env.example .env
-# Edit .env to configure AI settings (see Configuration section below)
 ```
 
-### 2. Import Employee Data
-
-Prepare your Excel file with these columns:
-- Formal Name
-- Email Address
-- People Leader Formal Name
-- Position Title
-- Function (Label)
-- Business Unit (Label)
-- Team (Label)
-- Location (Name)
+## 🐳 Docker 部署
 
 ```bash
-python scripts/import_employees.py path/to/your/employees.xlsx
+cd EC_Proj
+docker-compose up -d
 ```
 
-### 3. Start the Server
+这将启动：
+- Ollama (端口 11434)
+- OpenWebUI (端口 3000)
 
+然后手动启动 EC API：
 ```bash
-python scripts/start_server.py
+python start_server.py
 ```
 
-The API will be available at:
-- **API**: http://localhost:8000
-- **Documentation**: http://localhost:8000/docs
-- **Health Check**: http://localhost:8000/health
+## 📝 许可
 
-### 4. Configuration (Optional)
+内部使用
 
-The system works out-of-the-box with pattern matching. To enable AI features:
+## 🤝 贡献
 
-#### Option A: No AI (Default - Fastest)
-```bash
-# .env
-USE_AI_ROUTING=True
-ENABLE_LLM=False
-```
-✅ Best for: Development, testing, or when LLM not needed
-
-#### Option B: OpenAI (Best Quality)
-```bash
-# .env
-USE_AI_ROUTING=True
-ENABLE_LLM=True
-LLM_PROVIDER=openai
-OPENAI_API_KEY=sk-your-key-here
-OPENAI_MODEL=gpt-3.5-turbo
-```
-✅ Best for: Production with budget for API calls
-
-#### Option C: Local LLM (Privacy-First)
-```bash
-# .env
-USE_AI_ROUTING=True
-ENABLE_LLM=True
-LLM_PROVIDER=local
-LOCAL_LLM_ENDPOINT=http://localhost:11434/v1
-LOCAL_LLM_MODEL=llama2
-```
-✅ Best for: Organizations with privacy requirements
-
-📖 **See [AI_ARCHITECTURE.md](AI_ARCHITECTURE.md) for detailed configuration guide**
-
-## 📡 API Endpoints
-
-### Main Query Endpoint
-
-```bash
-POST /query
-Content-Type: application/json
-
-{
-  "query": "I need help setting up a new BIA provisioning workflow",
-  "session_id": "optional-session-id"
-}
-```
-
-### OpenWebUI Integration
-
-```bash
-POST /v1/chat/completions
-Content-Type: application/json
-
-{
-  "messages": [
-    {"role": "user", "content": "Who can help with network provisioning?"}
-  ]
-}
-```
-
-### Other Endpoints
-
-- `GET /health` - Health check and statistics
-- `GET /search/employee?email=user@sample.com` - Direct employee search
-- `POST /feedback` - Submit feedback on recommendations
-- `GET /analytics/summary` - Usage analytics
-
-## 🔌 OpenWebUI Integration
-
-1. In OpenWebUI, go to **Settings** → **Connections**
-2. Add a new connection:
-   - **Name**: Employee Finder
-   - **Base URL**: `http://localhost:8000/v1`
-   - **Model**: `employee-finder`
-
-3. Start chatting! Example queries:
-   - "I need help with BIA provisioning"
-   - "Who handles network security compliance?"
-   - "Find me someone from the billing team"
-
-## 💡 Usage Examples
-
-### Example 1: Finding Provisioning Help
-
-**Query**: "I need help setting up a new BIA provisioning workflow"
-
-**Response**:
-```
-✅ You're looking for help with bia provisioning. Let me find the right people for this.
-
-📋 Recommended Roles/Teams:
-  • Provisioning Specialist
-  • Network Engineer
-  • Compliance Officer
-
-👥 Recommended Contacts:
-
-1. Jane Doe (Primary Owner)
-   📧 jane.doe@sample.com
-   💼 Senior Provisioning Engineer
-   👥 Team: Network Provisioning
-   🎯 Match: 90% - Primary owner of: bia provisioning
-   ⬆️ Escalation: John Smith (john.smith@sample.com)
-
-...
-```
-
-## 🔒 Privacy & Responsible AI
-
-- ✅ **No PII Storage**: Employee data stays in local database
-- ✅ **Session-Only Processing**: Query data not retained after session
-- ✅ **No External Sharing**: Data never leaves your infrastructure
-- ✅ **Transparent Recommendations**: Always shows match reasoning
-- ✅ **Confidence Levels**: Clear indication of recommendation quality
-
-## 📈 Analytics
-
-Track usage and impact:
-
-```bash
-GET /analytics/summary
-```
-
-Returns:
-- Total queries processed
-- Average time saved
-- User satisfaction scores
-- Common query patterns
-
-## 🛠️ Configuration
-
-Edit `.env` file:
-
-```env
-# Database
-DATABASE_PATH=data/employee_directory.db
-
-# API
-API_PORT=8000
-
-# Agent
-MAX_RECOMMENDATIONS=10
-AVERAGE_TIME_SAVED_MINUTES=39.3
-
-# AI & LLM (New in v2.0)
-USE_AI_ROUTING=True          # Enable intelligent routing
-ENABLE_LLM=False             # Enable LLM for query understanding
-LLM_PROVIDER=openai          # "openai" or "local"
-OPENAI_API_KEY=              # Your OpenAI API key
-LOCAL_LLM_ENDPOINT=http://localhost:11434/v1
-```
-
-See [AI_ARCHITECTURE.md](AI_ARCHITECTURE.md) for detailed AI configuration.
-
-## 📚 Documentation
-
-- **[README.md](README.md)** - This file (overview and quick start)
-- **[QUICKSTART.md](QUICKSTART.md)** - 5-minute setup guide
-- **[AI_ARCHITECTURE.md](AI_ARCHITECTURE.md)** - Detailed AI router architecture
-- **[TECHNICAL_DESIGN.md](TECHNICAL_DESIGN.md)** - Technical architecture
-- **[OPENWEBUI_INTEGRATION.md](OPENWEBUI_INTEGRATION.md)** - OpenWebUI integration guide
-
-## 🧪 Testing
-
-```bash
-# Test the router
-python tests/test_router.py
-
-# Test the full agent
-python tests/test_agent.py
-```
-
-## 📝 License
-
-MIT License
-
-## 👥 Contributors
-
-Open Source Project
+这是一个内部项目。
 
 ---
 
-**Version**: 2.0.0 (AI Router Edition)
-**Last Updated**: 2026-01-18
+**当前活跃项目**: EC_Proj  
+**旧版本存档**: V1/
 
