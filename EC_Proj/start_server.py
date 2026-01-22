@@ -19,9 +19,9 @@ def main():
     print("=" * 60)
     print()
     
-    # Start uvicorn
+    # Start uvicorn (use sys.executable to ensure correct Python interpreter)
     subprocess.run([
-        "python", "-m", "uvicorn",
+        sys.executable, "-m", "uvicorn",
         "EC_api.main:app",
         "--host", "0.0.0.0",
         "--port", "8001",
