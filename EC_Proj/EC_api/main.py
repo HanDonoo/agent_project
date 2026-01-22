@@ -14,6 +14,15 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import time
 import uuid
+import logging
+import traceback
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 from EC_database.EC_db_manager import DatabaseManager
 from EC_skills_agent.EC_skills_interpreter_engine import SkillInferenceEngine
@@ -47,14 +56,43 @@ DB_PATH = "data/employee_directory_200_mock.db"
 OLLAMA_BASE_URL = "http://localhost:11434"
 CHAT_MODEL = "llama3.1:8b"
 
+logger.info("=" * 80)
+logger.info("🚀 Initializing EC Skills Finder API Server")
+logger.info("=" * 80)
+logger.info(f"📁 Database path: {DB_PATH}")
+logger.info(f"🤖 Ollama URL: {OLLAMA_BASE_URL}")
+logger.info(f"🧠 Chat model: {CHAT_MODEL}")
+
 # Initialize components
-db = DatabaseManager(db_path=DB_PATH)
-skill_engine = SkillInferenceEngine(
-    db_path=DB_PATH,
-    ollama_base_url=OLLAMA_BASE_URL,
-    chat_model=CHAT_MODEL
-)
-ollama_client = OllamaClient(OLLAMA_BASE_URL)
+try:
+    logger.info("📊 Initializing database manager...")
+    db = DatabaseManager(db_path=DB_PATH)
+    logger.info("✅ Database manager initialized")
+
+    logger.info("🧠 Initializing skill inference engine...")
+    skill_engine = SkillInferenceEngine(
+        db_path=DB_PATH,
+        ollama_base_url=OLLAMA_BASE_URL,
+        chat_model=CHAT_MODEL
+    )
+    logger.info("✅ Skill inference engine initialized")
+
+    logger.info("🤖 Initializing Ollama client...")
+    ollama_client = OllamaClient(OLLAMA_BASE_URL)
+    logger.info("✅ Ollama client initialized")
+
+    logger.info("=" * 80)
+    logger.info("✅ All components initialized successfully")
+    logger.info("=" * 80)
+except Exception as e:
+    logger.error("=" * 80)
+    logger.error(f"❌ FATAL: Failed to initialize components")
+    logger.error(f"   Error type: {type(e).__name__}")
+    logger.error(f"   Error message: {str(e)}")
+    logger.error(f"📋 Full traceback:")
+    logger.error(traceback.format_exc())
+    logger.error("=" * 80)
+    raise
 
 
 # ============================================
@@ -129,21 +167,34 @@ async def chat_completions(request: ChatCompletionRequest):
     Processes employee skills queries using AI
     """
     try:
+        logger.info("=" * 80)
+        logger.info("📨 Received chat completion request from OpenWebUI")
+        logger.info(f"   Model: {request.model}")
+        logger.info(f"   Messages count: {len(request.messages)}")
+
         # Extract user query from messages
         user_message = None
         for msg in request.messages:
             if msg.role == "user":
                 user_message = msg.content
                 break
-        
+
         if not user_message:
+            logger.error("❌ No user message found in request")
             raise HTTPException(status_code=400, detail="No user message found")
-        
+
+        logger.info(f"   User query: {user_message}")
+
         # Process query
+        logger.info("🚀 Starting query processing pipeline...")
         result = await process_skills_query(user_message, top_n=5)
-        
+        logger.info("✅ Query processing complete")
+
         # Format response
+        logger.info("📝 Formatting response for OpenWebUI...")
         response_content = format_response(result)
+        logger.info(f"✅ Response formatted ({len(response_content)} characters)")
+        logger.info("=" * 80)
         
         return {
             "id": f"chatcmpl-{time.time()}",
@@ -167,7 +218,16 @@ async def chat_completions(request: ChatCompletionRequest):
             }
         }
     
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error("=" * 80)
+        logger.error(f"❌ FATAL ERROR in chat_completions endpoint")
+        logger.error(f"   Error type: {type(e).__name__}")
+        logger.error(f"   Error message: {str(e)}")
+        logger.error(f"📋 Full traceback:")
+        logger.error(traceback.format_exc())
+        logger.error("=" * 80)
         raise HTTPException(status_code=500, detail=f"Query processing failed: {str(e)}")
 
 
@@ -196,6 +256,49 @@ async def query_employees(request: QueryRequest):
 # Core Processing Logic
 # ============================================
 
+async def process_skills_query_fallback(
+    query: str,
+    top_n: int = 5
+) -> Dict[str, Any]:
+    """
+    Fallback mode when Ollama is not available.
+    Uses simple keyword matching to find employees.
+    """
+    # Simple keyword search in database
+    employees = db.search_employees_by_keywords(query, limit=top_n)
+
+    if not employees:
+        return {
+            "success": False,
+            "message": "⚠️ No matching employees found (Ollama unavailable, using keyword search)",
+            "query": query,
+            "mode": "fallback",
+            "candidates": []
+        }
+
+    # Format results
+    candidates = []
+    for emp in employees:
+        candidates.append({
+            "employee_id": emp.get("employee_id"),
+            "name": emp.get("name"),
+            "email": emp.get("email"),
+            "title": emp.get("title"),
+            "department": emp.get("department"),
+            "team": emp.get("team"),
+            "score": 1.0,  # Simple mode, no scoring
+            "match_summary": "Keyword match (Ollama unavailable)"
+        })
+
+    return {
+        "success": True,
+        "message": f"⚠️ Found {len(candidates)} employees using keyword search (Ollama unavailable)",
+        "query": query,
+        "mode": "fallback",
+        "candidates": candidates
+    }
+
+
 async def process_skills_query(
     query: str,
     top_n: int = 5,
@@ -206,54 +309,89 @@ async def process_skills_query(
     1. Skill inference (what skills are needed?)
     2. Complexity analysis (what proficiency level?)
     3. Employee matching (who has these skills?)
+
+    Falls back to simple keyword matching if Ollama is not available.
     """
 
-    # Step 1: Infer required and preferred skills
-    skill_result = skill_engine.infer(query)
+    logger.info(f"📥 Processing query: {query}")
+    logger.info(f"   Parameters: top_n={top_n}, strict_required={strict_required}")
+
+    try:
+        # Step 1: Infer required and preferred skills (using Ollama)
+        logger.info("🔍 Step 1: Inferring skills using Ollama...")
+        skill_result = skill_engine.infer(query)
+        logger.info(f"✅ Skill inference complete: {len(skill_result.required)} required, {len(skill_result.preferred)} preferred")
+    except Exception as e:
+        # Fallback: Simple keyword-based skill extraction
+        logger.error(f"❌ Ollama error: {type(e).__name__}: {str(e)}")
+        logger.error(f"📋 Full traceback:\n{traceback.format_exc()}")
+        logger.warning("⚠️  Falling back to keyword search mode")
+        return await process_skills_query_fallback(query, top_n)
 
     # Convert to SkillRequirements format
-    requirements = SkillRequirements(
-        outcome_reasoning=skill_result.outcome_reasoning,
-        overall_confidence=skill_result.overall_confidence,
-        required=[
-            RequiredSkill(
-                skill=s.skill,
-                weight=s.weight,
-                confidence=s.confidence,
-                rationale=s.rationale,
-                importance=s.importance
-            )
-            for s in skill_result.required
-        ],
-        preferred=[
-            PreferredSkill(
-                skill=s.skill,
-                weight=s.weight,
-                confidence=s.confidence,
-                rationale=s.rationale,
-                importance=s.importance
-            )
-            for s in skill_result.preferred
-        ]
-    )
+    try:
+        logger.info("🔄 Converting skill inference results to requirements format...")
+        requirements = SkillRequirements(
+            outcome_reasoning=skill_result.outcome_reasoning,
+            overall_confidence=skill_result.overall_confidence,
+            required=[
+                RequiredSkill(
+                    skill=s.skill,
+                    weight=s.weight,
+                    confidence=s.confidence,
+                    rationale=s.rationale,
+                    importance=s.importance
+                )
+                for s in skill_result.required
+            ],
+            preferred=[
+                PreferredSkill(
+                    skill=s.skill,
+                    weight=s.weight,
+                    confidence=s.confidence,
+                    rationale=s.rationale,
+                    importance=s.importance
+                )
+                for s in skill_result.preferred
+            ]
+        )
+        logger.info("✅ Requirements format conversion complete")
+    except Exception as e:
+        logger.error(f"❌ Error converting requirements: {type(e).__name__}: {str(e)}")
+        logger.error(f"📋 Full traceback:\n{traceback.format_exc()}")
+        raise
 
     # Step 2: Infer complexity profile and target proficiency levels
-    complexity = infer_complexity_profile(
-        ollama_client,
-        CHAT_MODEL,
-        query,
-        requirements
-    )
+    try:
+        logger.info("🔍 Step 2: Analyzing query complexity...")
+        complexity = infer_complexity_profile(
+            ollama_client,
+            CHAT_MODEL,
+            query,
+            requirements
+        )
+        logger.info(f"✅ Complexity analysis complete: {complexity.complexity_label} (score: {complexity.complexity_score:.2f})")
+    except Exception as e:
+        logger.error(f"❌ Error in complexity analysis: {type(e).__name__}: {str(e)}")
+        logger.error(f"📋 Full traceback:\n{traceback.format_exc()}")
+        raise
 
     # Step 3: Find matching employees
-    matches = recommend_top_candidates(
-        DB_PATH,
-        query,
-        requirements,
-        complexity,
-        top_n=top_n,
-        strict_required=strict_required
-    )
+    try:
+        logger.info("🔍 Step 3: Finding matching employees...")
+        matches = recommend_top_candidates(
+            DB_PATH,
+            query,
+            requirements,
+            complexity,
+            top_n=top_n,
+            strict_required=strict_required
+        )
+        logger.info(f"✅ Found {len(matches)} matching candidates")
+    except Exception as e:
+        logger.error(f"❌ Error finding candidates: {type(e).__name__}: {str(e)}")
+        logger.error(f"📋 Full traceback:\n{traceback.format_exc()}")
+        raise
 
     # Format result
     return {
