@@ -54,7 +54,7 @@ app.add_middleware(
 # Configuration
 DB_PATH = "data/employee_directory_200_mock.db"
 OLLAMA_BASE_URL = "http://localhost:11434"
-CHAT_MODEL = "llama3.1:8b"
+CHAT_MODEL = "llama3.2:3b"  # （ old one llama3.1:8b）
 
 logger.info("=" * 80)
 logger.info("🚀 Initializing EC Skills Finder API Server")
