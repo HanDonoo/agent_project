@@ -3,7 +3,7 @@ FastAPI server for EC Employee Skills Finder
 OpenWebUI compatible API
 
 Includes:
-- Complexity analysis
+- Complexity analysis (AIClient-based; works with Ollama or Gemini)
 - Team/workstream planning (workstreams first; no skills gating)
 - Workstream-specific skill inference (per stream)
 - Per-workstream candidate selection + set-cover
@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 # Import your project modules
 from EC_database.EC_db_manager import DatabaseManager
 from EC_skills_agent.EC_skills_interpreter_engine import SkillInferenceEngine
-from EC_skills_agent.ai_client import create_ai_client
+from EC_skills_agent.ai_client import create_ai_client, AIClient
 
 from EC_skills_agent.EC_recommender_engine import (
     recommend_top_candidates,
@@ -53,17 +53,14 @@ from EC_skills_agent.EC_recommender_engine import (
     PreferredSkill,
     ComplexityProfile,
     EmployeeMatch,
-    OllamaClient,
     recommend_team_for_required_coverage,
     workstream_team_score,
 )
 
+from EC_skills_agent.EC_team_recommendation_engine import infer_team_plan
+
 # Import configuration
 import config
-
-# IMPORTANT: your updated team planner should NOT require reqs.
-# It should return workstreams with name/goal/domain/reasoning + intent/recommendation_mode/organisational_span/team_size.
-from EC_skills_agent.EC_team_recommendation_engine import infer_team_plan
 
 # FastAPI app
 app = FastAPI(
@@ -81,7 +78,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configuration
 logger.info("=" * 80)
 logger.info("🚀 Initializing EC Skills Finder API Server")
 logger.info("=" * 80)
@@ -108,18 +104,18 @@ try:
     db = DatabaseManager(db_path=config.DB_PATH)
     logger.info("✅ Database manager initialized")
 
-    logger.info(f"� Initializing AI client ({config.AI_PROVIDER})...")
+    logger.info(f"🤖 Initializing AI client ({config.AI_PROVIDER})...")
     if config.AI_PROVIDER == "gemini":
-        ai_client = create_ai_client(
+        ai_client: AIClient = create_ai_client(
             provider="gemini",
             api_key=config.GEMINI_API_KEY,
-            model=config.GEMINI_MODEL
+            model=config.GEMINI_MODEL,
         )
     else:
         ai_client = create_ai_client(
             provider="ollama",
             base_url=config.OLLAMA_BASE_URL,
-            model=config.OLLAMA_MODEL
+            model=config.OLLAMA_MODEL,
         )
     logger.info("✅ AI client initialized")
 
@@ -132,31 +128,11 @@ try:
     )
     logger.info("✅ Skill inference engine initialized")
 
-    # For complexity analysis - create a wrapper for backward compatibility
-    logger.info("🤖 Initializing complexity analysis client...")
-
-    # Create an adapter that wraps AIClient to work with old OllamaClient interface
-    class AIClientAdapter:
-        """Adapter to make AIClient work with old OllamaClient interface"""
-        def __init__(self, ai_client, model):
-            self.ai_client = ai_client
-            self.model = model
-            self.base_url = getattr(ai_client, 'base_url', 'N/A')
-
-        def chat(self, model, messages, temperature=0.2, timeout=300):
-            """Old interface: chat(model, messages, temperature)"""
-            return self.ai_client.chat(messages=messages, temperature=temperature, timeout=timeout)
-
-    ollama_client = AIClientAdapter(ai_client, CHAT_MODEL)
-    logger.info("✅ Complexity analysis client initialized")
-
     logger.info("=" * 80)
     logger.info("✅ All components initialized successfully")
     logger.info("=" * 80)
 
-    # Define legacy constants for backward compatibility
     DB_PATH = config.DB_PATH
-    CHAT_MODEL = config.GEMINI_MODEL if config.AI_PROVIDER == "gemini" else config.OLLAMA_MODEL
 
 except Exception as e:
     logger.error("=" * 80)
@@ -309,9 +285,6 @@ def _workstream_prompt_prefix(ws: dict) -> str:
 
 
 async def infer_workstream_requirements(query: str, ws: dict) -> SkillRequirements:
-    """
-    Calls your existing SkillInferenceEngine, but with a workstream-specific prefix.
-    """
     ws_query = _workstream_prompt_prefix(ws) + query
     skill_result = await asyncio.to_thread(skill_engine.infer, ws_query)
     return _skill_result_to_requirements(skill_result)
@@ -324,14 +297,6 @@ async def find_candidates_for_workstream(
     top_n_pool: int = 15,
     max_team_size: int = 3,
 ) -> dict:
-    """
-    Workstream pipeline:
-      1) infer skills for this workstream (domain-aware)
-      2) map to catalogue
-      3) infer complexity profile for this workstream (targets)
-      4) score candidates
-      5) pick a small team via set-cover on required skills
-    """
     catalogue = getattr(skill_engine, "skills", []) or []
 
     # 1) skills inference per stream
@@ -341,35 +306,40 @@ async def find_candidates_for_workstream(
     req_names = [s.skill for s in (reqs_obj.required or [])]
     pref_names = [s.skill for s in (reqs_obj.preferred or [])]
 
-    req_mapped, _ = map_skill_strings_to_catalog(req_names, catalogue)
-    pref_mapped, _ = map_skill_strings_to_catalog(pref_names, catalogue)
+    def map_one(skill: str, catalogue: List[str]) -> Optional[str]:
+        mapped, _ = map_skill_strings_to_catalog([skill], catalogue)
+        return mapped[0] if mapped else None
 
-    # 2b) rebuild requirements using mapped strings
     required_objs: List[RequiredSkill] = []
-    for i, s in enumerate(reqs_obj.required or []):
-        if i < len(req_mapped):
-            required_objs.append(
-                RequiredSkill(
-                    skill=req_mapped[i],
-                    weight=float(s.weight),
-                    confidence=float(s.confidence),
-                    rationale=str(s.rationale),
-                    importance=float(s.importance),
-                )
+    for s in (reqs_obj.required or []):
+        mapped = map_one(s.skill, catalogue)
+        if not mapped:
+            continue
+        required_objs.append(
+            RequiredSkill(
+                skill=mapped,
+                weight=float(s.weight),
+                confidence=float(s.confidence),
+                rationale=str(s.rationale),
+                importance=float(s.importance),
             )
+        )
 
     preferred_objs: List[PreferredSkill] = []
-    for i, s in enumerate(reqs_obj.preferred or []):
-        if i < len(pref_mapped):
-            preferred_objs.append(
-                PreferredSkill(
-                    skill=pref_mapped[i],
-                    weight=float(s.weight),
-                    confidence=float(s.confidence),
-                    rationale=str(s.rationale),
-                    importance=float(s.importance),
-                )
+    for s in (reqs_obj.preferred or []):
+        mapped = map_one(s.skill, catalogue)
+        if not mapped:
+            continue
+        preferred_objs.append(
+            PreferredSkill(
+                skill=mapped,
+                weight=float(s.weight),
+                confidence=float(s.confidence),
+                rationale=str(s.rationale),
+                importance=float(s.importance),
             )
+        )
+
 
     reqs_obj = SkillRequirements(
         outcome_reasoning=reqs_obj.outcome_reasoning,
@@ -394,8 +364,8 @@ async def find_candidates_for_workstream(
             "workstream_score": 0.0,
         }
 
-    # 3) workstream complexity profile (targets)
-    profile = infer_complexity_profile(ollama_client, CHAT_MODEL, query, reqs_obj)
+    # 3) workstream complexity profile (AIClient-based)
+    profile = infer_complexity_profile(ai_client, query, reqs_obj)
 
     # 4) candidate pool
     pool: List[EmployeeMatch] = await asyncio.to_thread(
@@ -408,7 +378,7 @@ async def find_candidates_for_workstream(
         False,  # strict_required=False for pool
     )
 
-    # 5) set-cover team selection (covers required skills across people)
+    # 5) set-cover team selection
     team, team_cov, missing = recommend_team_for_required_coverage(
         candidates=pool,
         reqs=reqs_obj,
@@ -518,7 +488,7 @@ async def process_skills_query_fallback(query: str, top_n: int = 5) -> Dict[str,
     if not employees:
         return {
             "success": False,
-            "message": "⚠️ No matching employees found (Ollama unavailable, using keyword search)",
+            "message": "⚠️ No matching employees found (AI unavailable, using keyword search)",
             "query": query,
             "mode": "fallback",
             "candidates": [],
@@ -535,13 +505,13 @@ async def process_skills_query_fallback(query: str, top_n: int = 5) -> Dict[str,
                 "department": emp.get("department"),
                 "team": emp.get("team"),
                 "score": 1.0,
-                "match_summary": "Keyword match (Ollama unavailable)",
+                "match_summary": "Keyword match (AI unavailable)",
             }
         )
 
     return {
         "success": True,
-        "message": f"⚠️ Found {len(candidates)} employees using keyword search (Ollama unavailable)",
+        "message": f"⚠️ Found {len(candidates)} employees using keyword search (AI unavailable)",
         "query": query,
         "mode": "fallback",
         "candidates": candidates,
@@ -559,17 +529,11 @@ async def process_skills_query(
     logger.info(f"📥 Processing query: {query}")
     logger.info(f"   Parameters: top_n={top_n}, strict_required={strict_required}")
 
-    # 1) Complexity (global) - do NOT depend on skill inference
+    # 1) Complexity (global) - AIClient-based, no model/base_url assumptions
     try:
         logger.info("🔍 Step 1: Complexity analysis...")
-        # allow empty reqs here; your infer_complexity_profile is robust to it
         empty_reqs = SkillRequirements(outcome_reasoning="", overall_confidence=0.3, required=[], preferred=[])
-        complexity = infer_complexity_profile(
-            ollama_client,
-            CHAT_MODEL,
-            query,
-            empty_reqs,
-        )
+        complexity = infer_complexity_profile(ai_client, query, empty_reqs)
         logger.info(f"✅ Complexity: {complexity.complexity_label} ({complexity.complexity_score:.2f})")
     except Exception as e:
         logger.warning(f"⚠️ Complexity analysis failed: {type(e).__name__}: {str(e)}")
@@ -585,7 +549,7 @@ async def process_skills_query(
     try:
         logger.info("👥 Step 2: Team/workstream planning...")
         team_plan_obj = infer_team_plan(
-            client=skill_engine.client,
+            client=ai_client,
             query=query,
             profile=complexity,
             max_team_size=5,
@@ -646,8 +610,7 @@ async def process_skills_query(
             "workstreams": workstreams_out,
         }
 
-    # 4) Optional overall candidates:
-    #    If you want an overall list, infer a GLOBAL set of skills at the end.
+    # 4) Optional overall candidates: infer GLOBAL skills at the end
     global_requirements = None
     matches: List[EmployeeMatch] = []
     try:
@@ -655,9 +618,8 @@ async def process_skills_query(
         global_skill_result = await asyncio.to_thread(skill_engine.infer, query)
         global_requirements = _skill_result_to_requirements(global_skill_result)
 
-        # If no required skills, skip overall scoring
         if global_requirements.required:
-            profile_global = infer_complexity_profile(ollama_client, CHAT_MODEL, query, global_requirements)
+            profile_global = infer_complexity_profile(ai_client, query, global_requirements)
             matches = recommend_top_candidates(
                 DB_PATH,
                 query,
@@ -670,7 +632,6 @@ async def process_skills_query(
     except Exception as e:
         logger.warning(f"⚠️ Overall matching skipped/failed: {type(e).__name__}: {str(e)}")
 
-    # Build response (main value is team_plan_result with per-stream skills)
     result: Dict[str, Any] = {
         "query": query,
         "understanding": (
@@ -721,7 +682,6 @@ def format_response(result: Dict[str, Any]) -> str:
         f"_{complexity.get('reasoning', '')}_\n",
     ]
 
-    # Workstreams are the “real” output now
     if team_plan:
         intent = team_plan.get("intent", "talent_search")
         mode = team_plan.get("recommendation_mode", "many_candidates")
@@ -755,7 +715,6 @@ def format_response(result: Dict[str, Any]) -> str:
             reqs = (reco.get("requirements", {}) or {}).get("required", []) or []
             prefs = (reco.get("requirements", {}) or {}).get("preferred", []) or []
 
-            # Print inferred skills PER stream (this is the point of your change)
             if reqs:
                 lines.append("**Required skills (this stream):**")
                 for s in reqs[:8]:
@@ -803,7 +762,6 @@ def format_response(result: Dict[str, Any]) -> str:
                 lines.append("**Who to talk to:** No suitable people found for this stream.")
             lines.append("")
 
-    # Optional overall list
     if matches:
         lines.append("**👥 Top Candidates (overall):**\n")
         for i, match in enumerate(matches[:5], 1):
@@ -816,16 +774,6 @@ def format_response(result: Dict[str, Any]) -> str:
             lines.append(f"   🎯 Overall score: {float(match.get('score', 0.0)):.3f}")
             lines.append(f"   📊 Required Coverage: {float(match.get('coverage_required', 0.0)):.0%}")
             lines.append(f"   📈 Preferred Coverage: {float(match.get('coverage_preferred', 0.0)):.0%}")
-
-            matched = match.get("matched_skills", []) or []
-            required_matched = [s for s in matched if s.get("type") == "required"][:3]
-            if required_matched:
-                lines.append("   ✅ Key Skills:")
-                for sk in required_matched:
-                    level = sk.get("employee_level", "N/A")
-                    target = sk.get("target_level", "N/A")
-                    verified = "✓" if sk.get("verified") else ""
-                    lines.append(f"      • {sk.get('skill')}: {level} (target: {target}) {verified}")
             lines.append("")
 
     lines.append(f"\n⏱️ *Confidence: {float(result.get('confidence', 0.6)):.0%}*")
@@ -843,7 +791,7 @@ async def chat_completions(request: ChatCompletionRequest):
         logger.info(f"   Model: {request.model}")
         logger.info(f"   Messages count: {len(request.messages)}")
 
-        # Extract LAST user query (important)
+        # Extract LAST user query
         user_message = None
         for msg in reversed(request.messages):
             if msg.role == "user":

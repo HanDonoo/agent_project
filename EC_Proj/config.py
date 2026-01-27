@@ -10,6 +10,7 @@ DB_PATH = "data/employee_directory_200_mock.db"
 # AI Model Configuration
 # Options: "ollama" or "gemini"
 AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini")  # 默认使用 Gemini
+#AI_PROVIDER = os.getenv("AI_PROVIDER", "ollama")  # 默认使用 Gemini
 
 # Ollama Configuration (if using Ollama)
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
