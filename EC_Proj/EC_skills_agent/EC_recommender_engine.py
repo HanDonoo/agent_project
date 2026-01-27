@@ -5,8 +5,7 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Set, Any
 
-import requests
-
+from .ai_client import AIClient
 
 # =======================
 # Constants
@@ -14,7 +13,6 @@ import requests
 
 PROF_ORDER = {"awareness": 1, "skilled": 2, "advanced": 3, "expert": 4}
 PROF_LABELS = set(PROF_ORDER.keys())
-
 
 # =======================
 # Models
@@ -76,29 +74,6 @@ class EmployeeMatch:
     coverage_preferred: float
     reasoning: str
     matched_skills: List[dict]
-
-
-# =======================
-# Ollama Client
-# =======================
-
-class OllamaClient:
-    def __init__(self, base_url: str):
-        self.base_url = base_url.rstrip("/")
-
-    def chat(self, model: str, messages: List[dict], temperature: float = 0.2, timeout: int = 120) -> str:
-        r = requests.post(
-            f"{self.base_url}/api/chat",
-            json={
-                "model": model,
-                "messages": messages,
-                "stream": False,
-                "options": {"temperature": temperature},
-            },
-            timeout=timeout,
-        )
-        r.raise_for_status()
-        return r.json()["message"]["content"]
 
 
 # =======================
@@ -166,12 +141,11 @@ def load_employee_skill_matrix(db_path: str) -> Tuple[List[dict], Dict[int, Dict
 
 
 # =======================
-# Complexity Profile
+# Complexity Profile (AIClient-based)
 # =======================
 
 def infer_complexity_profile(
-    client: OllamaClient,
-    chat_model: str,
+    client: AIClient,
     query: str,
     reqs: SkillRequirements,
 ) -> ComplexityProfile:
@@ -227,12 +201,12 @@ Return JSON exactly in this shape:
 """.strip()
 
     content = client.chat(
-        chat_model,
-        [
+        messages=[
             {"role": "system", "content": "Return ONLY valid JSON. No extra text."},
             {"role": "user", "content": prompt},
         ],
         temperature=0.2,
+        timeout=240,
     )
 
     data = safe_json(content) or {}
@@ -298,7 +272,7 @@ def _match_ratio(emp_level: Optional[str], target_level: str) -> float:
 
 def recommend_top_candidates(
     db_path: str,
-    query: str,  # kept for compatibility/logging
+    query: str,
     reqs: SkillRequirements,
     profile: Any,
     top_n: int = 20,

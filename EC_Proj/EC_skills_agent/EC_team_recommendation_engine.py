@@ -5,16 +5,14 @@ from typing import Any, List, Optional, Literal
 import json
 import re
 
+from .ai_client import AIClient
 
-# ============================================================
-# Models
-# ============================================================
 
 @dataclass(frozen=True)
 class WorkstreamPlan:
     """
     domain is a LIGHT label used to drive skill inference prompts.
-    Keep it broad and stable (finance, commercial, legal, risk, technical, ops, delivery).
+    Keep it broad and stable (finance, commercial, legal, risk, technical, ops, delivery, strategy).
     """
     name: str
     goal: str
@@ -45,10 +43,6 @@ class TeamPlan:
     workstreams: List[WorkstreamPlan]
     reasoning: str
 
-
-# ============================================================
-# JSON extraction helper
-# ============================================================
 
 _JSON_BLOCK = re.compile(r"\{[\s\S]*\}")
 
@@ -92,28 +86,11 @@ def _as_ws_list(x: Any) -> List[dict]:
 
 
 def infer_team_plan(
-    client: Any,  # must expose .chat(model, messages, temperature=...)
-    chat_model: str,
+    client: AIClient,
     query: str,
     profile: Any,  # expects profile.complexity_score / complexity_label
     max_team_size: int = 5,
 ) -> TeamPlan:
-    """
-    Workstream-first planner.
-
-    Inputs:
-      - query
-      - cognitive complexity (profile.complexity_score)
-    Outputs:
-      - intent (talent_search vs delivery)
-      - organisational_span (0..1) = how many org domains must be involved
-      - workstreams with domain labels (no skills)
-
-    Key policy:
-      - "talent_search" => recommendation_mode="many_candidates", NOT delivery workstreams.
-      - But talent_search can STILL require multiple stakeholders if span is medium/high.
-      - "delivery" => team_size should follow both complexity + span.
-    """
     complexity_score = _clamp01(getattr(profile, "complexity_score", 0.5), 0.5)
     complexity_label = str(getattr(profile, "complexity_label", "medium") or "medium")
 
@@ -157,12 +134,12 @@ Return ONLY valid JSON in this exact shape:
 """.strip()
 
     content = client.chat(
-        chat_model,
-        [
+        messages=[
             {"role": "system", "content": "Return ONLY valid JSON. No extra text."},
             {"role": "user", "content": prompt},
         ],
         temperature=0.2,
+        timeout=240,
     )
 
     data = safe_json(content) or {}
@@ -217,11 +194,8 @@ Return ONLY valid JSON in this exact shape:
                 )
             ]
 
-    # Team sizing logic:
-    # - delivery: size follows BOTH complexity and span
-    # - talent_search: size follows span (stakeholder count), not “delivery team”
+    # Team sizing logic
     if intent == "delivery":
-        # baseline by complexity
         if complexity_score < 0.35:
             base = 1
         elif complexity_score <= 0.65:
@@ -229,7 +203,6 @@ Return ONLY valid JSON in this exact shape:
         else:
             base = 3
 
-        # add lift by span
         if organisational_span < 0.30:
             span_lift = 0
         elif organisational_span < 0.55:
@@ -243,7 +216,6 @@ Return ONLY valid JSON in this exact shape:
         needs_team = team_size > 1
         recommendation_mode: Literal["many_candidates", "team_workstreams"] = "team_workstreams"
     else:
-        # stakeholder count
         if organisational_span < 0.30:
             team_size = 1
         elif organisational_span < 0.55:
@@ -256,7 +228,6 @@ Return ONLY valid JSON in this exact shape:
         needs_team = team_size > 1
         recommendation_mode = "many_candidates"
 
-        # Force single “Stakeholders” stream for talent_search
         ws0 = ws_out[0]
         ws_out = [
             WorkstreamPlan(
