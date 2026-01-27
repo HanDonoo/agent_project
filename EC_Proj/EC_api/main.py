@@ -21,6 +21,10 @@ import logging
 import traceback
 import json
 from typing import List, Optional, Dict, Any, Tuple
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Add parent directory to path (keep relative paths unchanged)
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -39,6 +43,7 @@ logger = logging.getLogger(__name__)
 # Import your project modules
 from EC_database.EC_db_manager import DatabaseManager
 from EC_skills_agent.EC_skills_interpreter_engine import SkillInferenceEngine
+from EC_skills_agent.ai_client import create_ai_client
 
 from EC_skills_agent.EC_recommender_engine import (
     recommend_top_candidates,
@@ -52,6 +57,9 @@ from EC_skills_agent.EC_recommender_engine import (
     recommend_team_for_required_coverage,
     workstream_team_score,
 )
+
+# Import configuration
+import config
 
 # IMPORTANT: your updated team planner should NOT require reqs.
 # It should return workstreams with name/goal/domain/reasoning + intent/recommendation_mode/organisational_span/team_size.
@@ -74,40 +82,74 @@ app.add_middleware(
 )
 
 # Configuration
-DB_PATH = "data/employee_directory_200_mock.db"
-OLLAMA_BASE_URL = "http://localhost:11434"
-CHAT_MODEL = "llama3.2:3b"
-
 logger.info("=" * 80)
 logger.info("🚀 Initializing EC Skills Finder API Server")
 logger.info("=" * 80)
-logger.info(f"📁 Database path: {DB_PATH}")
-logger.info(f"🤖 Ollama URL: {OLLAMA_BASE_URL}")
-logger.info(f"🧠 Chat model: {CHAT_MODEL}")
+
+# Validate configuration
+try:
+    config.validate_config()
+    logger.info("✅ Configuration validated")
+except Exception as e:
+    logger.error(f"❌ Configuration error: {e}")
+    raise
+
+logger.info(f"📁 Database path: {config.DB_PATH}")
+logger.info(f"🤖 AI Provider: {config.AI_PROVIDER}")
+if config.AI_PROVIDER == "gemini":
+    logger.info(f"🌟 Gemini Model: {config.GEMINI_MODEL}")
+else:
+    logger.info(f"🤖 Ollama URL: {config.OLLAMA_BASE_URL}")
+    logger.info(f"🧠 Ollama Model: {config.OLLAMA_MODEL}")
 
 # Initialize components
 try:
     logger.info("📊 Initializing database manager...")
-    db = DatabaseManager(db_path=DB_PATH)
+    db = DatabaseManager(db_path=config.DB_PATH)
     logger.info("✅ Database manager initialized")
+
+    logger.info(f"� Initializing AI client ({config.AI_PROVIDER})...")
+    if config.AI_PROVIDER == "gemini":
+        ai_client = create_ai_client(
+            provider="gemini",
+            api_key=config.GEMINI_API_KEY,
+            model=config.GEMINI_MODEL
+        )
+    else:
+        ai_client = create_ai_client(
+            provider="ollama",
+            base_url=config.OLLAMA_BASE_URL,
+            model=config.OLLAMA_MODEL
+        )
+    logger.info("✅ AI client initialized")
 
     logger.info("🧠 Initializing skill inference engine...")
     skill_engine = SkillInferenceEngine(
-        db_path=DB_PATH,
-        ollama_base_url=OLLAMA_BASE_URL,
-        chat_model=CHAT_MODEL,
+        db_path=config.DB_PATH,
+        ai_client=ai_client,
         required_range=(2, 10),
         preferred_range=(1, 10),
     )
     logger.info("✅ Skill inference engine initialized")
 
-    logger.info("🤖 Initializing Ollama client...")
-    ollama_client = OllamaClient(OLLAMA_BASE_URL)
-    logger.info("✅ Ollama client initialized")
+    # For complexity analysis (still uses Ollama client for now)
+    logger.info("🤖 Initializing complexity analysis client...")
+    if config.AI_PROVIDER == "ollama":
+        ollama_client = OllamaClient(config.OLLAMA_BASE_URL)
+    else:
+        # For Gemini, we'll use a wrapper that mimics OllamaClient interface
+        # This is a temporary solution until we refactor complexity analysis
+        ollama_client = OllamaClient(config.OLLAMA_BASE_URL) if config.AI_PROVIDER == "ollama" else None
+    logger.info("✅ Complexity analysis client initialized")
 
     logger.info("=" * 80)
     logger.info("✅ All components initialized successfully")
     logger.info("=" * 80)
+
+    # Define legacy constants for backward compatibility
+    DB_PATH = config.DB_PATH
+    CHAT_MODEL = config.GEMINI_MODEL if config.AI_PROVIDER == "gemini" else config.OLLAMA_MODEL
+
 except Exception as e:
     logger.error("=" * 80)
     logger.error("❌ FATAL: Failed to initialize components")

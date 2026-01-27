@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
 import requests
+from .ai_client import AIClient
 
 
 # =========================
@@ -99,30 +100,10 @@ def _safe_json_extract(text: str) -> Optional[dict]:
 
 
 # =========================
-# Ollama client
+# AI client (imported from ai_client module)
 # =========================
-
-class OllamaClient:
-    def __init__(self, base_url: str):
-        self.base_url = base_url.rstrip("/")
-
-    def chat(self, model: str, messages: List[dict], temperature: float = 0.2, timeout: int = 120) -> str:
-        r = requests.post(
-            f"{self.base_url}/api/chat",
-            json={
-                "model": model,
-                "messages": messages,
-                "stream": False,
-                "options": {"temperature": temperature},
-            },
-            timeout=timeout,
-        )
-        r.raise_for_status()
-        data = r.json()
-        try:
-            return data["message"]["content"]
-        except Exception:
-            raise RuntimeError(f"Unexpected chat response shape: {data}")
+# Note: OllamaClient is now imported from ai_client.py
+# This module now supports both Ollama and Gemini
 
 
 # =========================
@@ -151,20 +132,19 @@ class SkillInferenceEngine:
     - LLM sees the FULL catalogue (debug-style).
     - Output must use EXACT skill strings from the catalogue.
     - If required count is too low, we do an AI-only top-up/repair call.
+    - Now supports both Ollama and Gemini via AIClient abstraction
     """
 
     def __init__(
         self,
         *,
         db_path: str,
-        ollama_base_url: str = "http://localhost:11434",
-        chat_model: str = "llama3.2:3b",
+        ai_client: AIClient,  # Now accepts any AIClient implementation
         required_range: Tuple[int, int] = (1, 10),
         preferred_range: Tuple[int, int] = (0, 10),
     ):
         self.db_path = db_path
-        self.client = OllamaClient(ollama_base_url)
-        self.chat_model = chat_model
+        self.client = ai_client  # Use the provided AI client
 
         self.req_min, self.req_max = required_range
         self.pref_min, self.pref_max = preferred_range
@@ -180,8 +160,7 @@ class SkillInferenceEngine:
         # First pass
         prompt = self._build_prompt(query)
         content = self.client.chat(
-            self.chat_model,
-            [
+            messages=[
                 {"role": "system", "content": "Return ONLY valid JSON. No extra text."},
                 {"role": "user", "content": prompt},
             ],
@@ -262,8 +241,7 @@ Rules:
 """.strip()
 
         content = self.client.chat(
-            self.chat_model,
-            [
+            messages=[
                 {"role": "system", "content": "Return ONLY valid JSON. No extra text."},
                 {"role": "user", "content": prompt},
             ],
@@ -313,8 +291,7 @@ Candidate Skills:
 """.strip()
 
         content = self.client.chat(
-            self.chat_model,
-            [
+            messages=[
                 {"role": "system", "content": "Return ONLY valid JSON. No extra text."},
                 {"role": "user", "content": prompt},
             ],

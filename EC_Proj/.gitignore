@@ -11,6 +11,9 @@ venv/
 ENV/
 env/
 
+# Environment variables (contains API keys)
+.env
+
 # Database files (must be generated locally)
 data/*.db
 data/*.db-journal
