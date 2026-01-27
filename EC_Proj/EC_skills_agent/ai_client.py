@@ -81,12 +81,19 @@ class GeminiClient(AIClient):
             gemini_contents = []
             for msg in messages:
                 role = msg["role"]
+                content = msg["content"]
+
                 # Gemini uses "user" and "model" instead of "user" and "assistant"
                 if role == "assistant":
                     role = "model"
-                
+                # Gemini doesn't support "system" role - convert to user message
+                elif role == "system":
+                    role = "user"
+                    # Prepend system instruction to make it clear
+                    content = f"[SYSTEM INSTRUCTION] {content}"
+
                 gemini_contents.append({
-                    "parts": [{"text": msg["content"]}],
+                    "parts": [{"text": content}],
                     "role": role
                 })
             
