@@ -1,22 +1,13 @@
 """
 EC_skills_interpreter_engine.py
 
-Updated Skill inference engine (Ollama-only) — DEBUG MODE: NO SHORTLISTING
+Ollama-only skill inference engine with AI-only ("smarter") top-up.
 
-Changes in this update:
-- Each inferred skill now carries an `importance` (0..1) assigned by the LLM
-  — this represents how critical the skill is for this specific query.
-- Prompt asks the LLM to return importance for each skill.
-- Stronger validation: LLM outputs are strictly mapped to DB catalogue entries
-  (case-insensitive) and unknown skills are dropped.
-- Outputs are clamped and post-processed; minimal top-up behavior remains for debug.
-- Sorting of returned skills uses (weight * importance * confidence).
-- No shortlisting: the full DB skills catalogue is provided to the LLM
-  (debug mode). Replace candidate construction to re-enable shortlist retrieval.
-
-Usage:
-  engine = SkillInferenceEngine(db_path="data/employee_directory_200_mock.db", ...)
-  res = engine.infer("find me deep learning engineers")
+Design goals:
+- Let the LLM interpret the query freely, but return skills ONLY from the DB catalogue (exact strings).
+- Each inferred skill includes weight/confidence/importance (0..1) + rationale.
+- If required skills count is below minimum, use an AI "repair/top-up" call (NOT deterministic catalogue fill).
+- Minimal deterministic logic: clamp numeric ranges, dedupe, enforce max counts, remove preferred overlap.
 """
 
 from __future__ import annotations
@@ -37,9 +28,9 @@ import requests
 @dataclass(frozen=True)
 class InferredSkill:
     skill: str
-    weight: float          # 0..1 (model's notion of importance/role)
-    confidence: float      # 0..1 (model confidence about this skill being relevant)
-    importance: float      # 0..1 (how critical this skill is for THIS query)
+    weight: float          # 0..1
+    confidence: float      # 0..1
+    importance: float      # 0..1
     rationale: str
 
 
@@ -157,14 +148,9 @@ def load_skills_from_db(db_path: str) -> List[str]:
 
 class SkillInferenceEngine:
     """
-    DEBUG MODE:
-      query -> LLM over FULL DB skills catalogue (no shortlist)
-
-    Guardrails:
-      - LLM must choose only from candidate list (the full DB list)
-      - Output must be JSON
-      - Enforce counts and clamp values
-      - Each returned skill must include an `importance` 0..1
+    - LLM sees the FULL catalogue (debug-style).
+    - Output must use EXACT skill strings from the catalogue.
+    - If required count is too low, we do an AI-only top-up/repair call.
     """
 
     def __init__(
@@ -172,34 +158,27 @@ class SkillInferenceEngine:
         *,
         db_path: str,
         ollama_base_url: str = "http://localhost:11434",
-        chat_model: str = "llama3.1:8b",
-        embed_model: str = "nomic-embed-text",   # unused in debug mode
-        shortlist_k: int = 60,                   # unused in debug mode
+        chat_model: str = "llama3.2:3b",
         required_range: Tuple[int, int] = (1, 10),
         preferred_range: Tuple[int, int] = (0, 10),
     ):
         self.db_path = db_path
         self.client = OllamaClient(ollama_base_url)
         self.chat_model = chat_model
-        self.embed_model = embed_model
-        self.shortlist_k = shortlist_k
 
         self.req_min, self.req_max = required_range
         self.pref_min, self.pref_max = preferred_range
 
         self.skills = load_skills_from_db(db_path)
+        self._allowed = {s.lower(): s for s in self.skills}
 
     def infer(self, query: str) -> SkillInferenceResult:
         query = _norm(query)
         if not query:
             raise ValueError("Query must be non-empty.")
 
-        # ==========================================================
-        # DEBUG: NO SHORTLISTING — use FULL DB catalogue as candidates
-        # ==========================================================
-        candidates = [(skill, 1.0) for skill in self.skills]  # (skill_name, score)
-
-        prompt = self._build_prompt(query, candidates)
+        # First pass
+        prompt = self._build_prompt(query)
         content = self.client.chat(
             self.chat_model,
             [
@@ -211,17 +190,20 @@ class SkillInferenceEngine:
 
         data = _safe_json_extract(content)
         if not isinstance(data, dict):
-            return self._fallback(reason="LLM did not return parseable JSON.")
+            # AI repair attempt (one shot)
+            repaired = self._ai_repair_json(query, raw_text=content)
+            data = repaired if isinstance(repaired, dict) else {}
 
-        return self._postprocess(query, candidates, data)
+        res = self._postprocess(query, data)
 
-    def _build_prompt(self, query: str, candidates: List[Tuple[str, float]]) -> str:
-        """
-        Provide the full canonical candidate list and require the LLM to pick only from it.
-        We now request an `importance` value (0.0-1.0) per skill representing how critical
-        that skill is for this specific query.
-        """
-        skill_list = [s for (s, _score) in candidates]
+        # If required count still below min, do AI top-up/repair (NOT deterministic fill)
+        if len(res.required) < self.req_min:
+            res = self._ai_topup_required(query, res)
+
+        return res
+
+    def _build_prompt(self, query: str) -> str:
+        skill_list = self.skills
 
         return f"""
 User query:
@@ -234,12 +216,12 @@ Rules (must follow precisely):
 - REQUIRED skills are strictly necessary to satisfy the query.
 - PREFERRED skills strengthen the outcome but are not strictly necessary.
 - For each skill returned include:
-  - weight: 0.0 - 1.0 (how central the skill is to the role)
-  - confidence: 0.0 - 1.0 (your confidence the skill is relevant)
-  - importance: 0.0 - 1.0 (how critical this skill is for THIS query; higher -> missing this skill should be penalized more)
+  - weight: 0.0 - 1.0 (how central the skill is)
+  - confidence: 0.0 - 1.0 (your confidence it's relevant)
+  - importance: 0.0 - 1.0 (how critical for THIS query)
   - rationale: 1-2 short sentences
-- Weights, confidences, and importances must be numeric in 0..1; avoid 1.0 unless clearly exact.
-- Return ONLY valid JSON that exactly follows the schema below. No extra text.
+- Avoid always choosing 1.0.
+- Return ONLY valid JSON.
 
 Return JSON exactly in this shape:
 {{
@@ -253,14 +235,96 @@ Candidate Skills (choose from these EXACT strings):
 {json.dumps(skill_list, ensure_ascii=False)}
 """.strip()
 
-    def _postprocess(
-        self,
-        query: str,
-        candidates: List[Tuple[str, float]],
-        data: dict,
-    ) -> SkillInferenceResult:
-        allowed = {s.lower(): s for (s, _score) in candidates}
+    def _ai_repair_json(self, query: str, raw_text: str) -> Optional[dict]:
+        """
+        If the model returns non-JSON or malformed JSON, ask it to repair into the exact schema.
+        """
+        prompt = f"""
+The following response was supposed to be JSON but is malformed or includes extra text.
 
+User query:
+{query}
+
+Bad response:
+{raw_text}
+
+Fix it and return ONLY valid JSON in this exact shape:
+{{
+  "outcome_reasoning": "1-3 sentences",
+  "overall_confidence": 0.0,
+  "required": [{{"skill":"…","weight":0.0,"confidence":0.0,"importance":0.0,"rationale":"…"}}],
+  "preferred": [{{"skill":"…","weight":0.0,"confidence":0.0,"importance":0.0,"rationale":"…"}}]
+}}
+
+Rules:
+- skills MUST be EXACT matches from this candidate list:
+{json.dumps(self.skills, ensure_ascii=False)}
+""".strip()
+
+        content = self.client.chat(
+            self.chat_model,
+            [
+                {"role": "system", "content": "Return ONLY valid JSON. No extra text."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.1,
+        )
+        return _safe_json_extract(content)
+
+    def _ai_topup_required(self, query: str, res: SkillInferenceResult) -> SkillInferenceResult:
+        """
+        AI-only top-up: ask model to add missing required skills (from catalogue) while keeping prior ones.
+        No deterministic filling.
+        """
+        have_required = [s.skill for s in res.required]
+        have_preferred = [s.skill for s in res.preferred]
+
+        prompt = f"""
+Your previous skill inference returned too few REQUIRED skills.
+
+User query:
+{query}
+
+You MUST return at least {self.req_min} REQUIRED skills and at most {self.req_max}.
+You MUST choose skills ONLY from the Candidate Skills list (exact strings).
+
+Existing required:
+{json.dumps(have_required, ensure_ascii=False)}
+
+Existing preferred:
+{json.dumps(have_preferred, ensure_ascii=False)}
+
+Task:
+- Add additional REQUIRED skills (only if necessary) to reach the minimum.
+- Keep existing skills unless clearly wrong.
+- Ensure preferred does not duplicate required.
+- Output the full final JSON (same schema).
+
+Return JSON exactly in this shape:
+{{
+  "outcome_reasoning": "1-3 sentences describing the inferred need",
+  "overall_confidence": 0.0,
+  "required": [{{"skill":"…","weight":0.0,"confidence":0.0,"importance":0.0,"rationale":"…"}}],
+  "preferred": [{{"skill":"…","weight":0.0,"confidence":0.0,"importance":0.0,"rationale":"…"}}]
+}}
+
+Candidate Skills:
+{json.dumps(self.skills, ensure_ascii=False)}
+""".strip()
+
+        content = self.client.chat(
+            self.chat_model,
+            [
+                {"role": "system", "content": "Return ONLY valid JSON. No extra text."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.15,
+        )
+
+        data = _safe_json_extract(content) or {}
+        return self._postprocess(query, data)
+
+    def _postprocess(self, query: str, data: dict) -> SkillInferenceResult:
         def parse_list(items) -> List[InferredSkill]:
             if not isinstance(items, list):
                 return []
@@ -271,13 +335,14 @@ Candidate Skills (choose from these EXACT strings):
             for obj in items:
                 if not isinstance(obj, dict):
                     continue
+
                 sk_raw = _norm(str(obj.get("skill", "")))
                 if not sk_raw:
                     continue
 
-                canon = allowed.get(sk_raw.lower())
+                canon = self._allowed.get(sk_raw.lower())
                 if not canon:
-                    # unknown skill - ignore (we require exact matches)
+                    # Cannot score unknown skills against DB later, so we must drop.
                     continue
 
                 key = canon.lower()
@@ -292,7 +357,7 @@ Candidate Skills (choose from these EXACT strings):
 
                 out.append(InferredSkill(skill=canon, weight=w, confidence=c, importance=imp, rationale=r))
 
-            # Sort by combined signal (weight * importance * confidence) so most important/strong items come first
+            # Sort by combined signal
             out.sort(key=lambda x: (x.weight * x.importance * x.confidence), reverse=True)
             return out
 
@@ -303,11 +368,7 @@ Candidate Skills (choose from these EXACT strings):
         req_set = {r.skill.lower() for r in required}
         preferred = [p for p in preferred if p.skill.lower() not in req_set][: self.pref_max]
 
-        # ensure minimum required count (top up from catalogue if LLM under-returns)
-        if len(required) < self.req_min:
-            required = self._topup_required(required)
-
-        # clamp confidences a bit (avoid absolute 1.0)
+        # clamp confidences/importances slightly away from 1.0
         required = [
             InferredSkill(s.skill, s.weight, min(s.confidence, 0.95), min(s.importance, 0.95), s.rationale)
             for s in required
@@ -317,7 +378,7 @@ Candidate Skills (choose from these EXACT strings):
             for s in preferred
         ]
 
-        outcome = _norm(str(data.get("outcome_reasoning", ""))) or "Identify the skills needed to successfully address the user’s request."
+        outcome = _norm(str(data.get("outcome_reasoning", ""))) or "Identify the skills needed to address the user’s request."
         overall = _clamp01(data.get("overall_confidence", self._compute_overall_conf(required)))
         if overall > 0.95:
             overall = 0.9
@@ -329,45 +390,10 @@ Candidate Skills (choose from these EXACT strings):
             preferred=preferred,
         )
 
-    def _topup_required(self, required: List[InferredSkill]) -> List[InferredSkill]:
-        """
-        If the LLM returns too few required skills, fill from the start of the catalogue.
-        (Debug-only behaviour; production should fill from retrieval / shortlist.)
-        """
-        have = {r.skill.lower() for r in required}
-        for s in self.skills:
-            if len(required) >= self.req_min:
-                break
-            if s.lower() in have:
-                continue
-            required.append(
-                InferredSkill(
-                    skill=s,
-                    weight=0.55,
-                    confidence=0.55,
-                    importance=0.55,
-                    rationale="Added to meet minimum required skills (debug top-up).",
-                )
-            )
-            have.add(s.lower())
-        return required[: self.req_max]
-
     def _compute_overall_conf(self, required: List[InferredSkill]) -> float:
         if not required:
             return 0.25
-        # weigh skills by their importance when computing overall confidence
         weighted = sum((r.confidence * r.importance) for r in required)
         weight_sum = sum((r.importance) for r in required) or 1.0
         avg = weighted / weight_sum
         return _clamp01(0.25 + 0.65 * avg)
-
-    def _fallback(self, reason: str) -> SkillInferenceResult:
-        required = [
-            InferredSkill(skill=self.skills[0], weight=0.6, confidence=0.5, importance=0.5, rationale=reason)
-        ] if self.skills else []
-        return SkillInferenceResult(
-            outcome_reasoning="Fallback: unable to parse model output; returning minimal required skills.",
-            overall_confidence=0.3,
-            required=required,
-            preferred=[],
-        )
