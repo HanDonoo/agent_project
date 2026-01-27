@@ -3,11 +3,11 @@ FastAPI server for EC Employee Skills Finder
 OpenWebUI compatible API
 
 Includes:
-- Skill inference
 - Complexity analysis
-- Team plan inference + per-workstream candidate search
-- Overall candidate recommendations
-- Workstream score displayed separately from overall score
+- Team/workstream planning (workstreams first; no skills gating)
+- Workstream-specific skill inference (per stream)
+- Per-workstream candidate selection + set-cover
+- Optional overall candidate recommendations
 - Guard against OpenWebUI meta follow-up prompt requests triggering pipeline
 """
 from __future__ import annotations
@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 # Import your project modules
 from EC_database.EC_db_manager import DatabaseManager
 from EC_skills_agent.EC_skills_interpreter_engine import SkillInferenceEngine
+
 from EC_skills_agent.EC_recommender_engine import (
     recommend_top_candidates,
     infer_complexity_profile,
@@ -51,6 +52,9 @@ from EC_skills_agent.EC_recommender_engine import (
     recommend_team_for_required_coverage,
     workstream_team_score,
 )
+
+# IMPORTANT: your updated team planner should NOT require reqs.
+# It should return workstreams with name/goal/domain/reasoning + intent/recommendation_mode/organisational_span/team_size.
 from EC_skills_agent.EC_team_recommendation_engine import infer_team_plan
 
 # FastAPI app
@@ -92,8 +96,8 @@ try:
         db_path=DB_PATH,
         ollama_base_url=OLLAMA_BASE_URL,
         chat_model=CHAT_MODEL,
-        required_range=(1, 10),
-        preferred_range=(0, 10),
+        required_range=(2, 10),
+        preferred_range=(1, 10),
     )
     logger.info("✅ Skill inference engine initialized")
 
@@ -138,18 +142,17 @@ class QueryRequest(BaseModel):
 
 
 # ---------------------------
-# Utilities: map/match LLM skills -> DB catalogue
+# Utilities: map/match inferred skills -> DB catalogue
 # ---------------------------
 def map_skill_strings_to_catalog(skill_strings: List[str], catalogue: List[str]) -> Tuple[List[str], List[str]]:
     """
-    Minimal mapping for workstreams: tries exact/substring/token overlap.
-    (This is only for workstream skill strings; your primary skill inference already uses exact DB strings.)
+    Minimal mapping: exact/substring/token overlap.
     Returns (mapped_list, unknown_list).
     """
     mapped: List[str] = []
     unknown: List[str] = []
     if not catalogue:
-        return mapped, skill_strings or []
+        return mapped, (skill_strings or [])
 
     norm_catalogue = {s.lower(): s for s in catalogue}
 
@@ -205,46 +208,135 @@ def map_skill_strings_to_catalog(skill_strings: List[str], catalogue: List[str])
     return out, unknown
 
 
+def _skill_result_to_requirements(skill_result) -> SkillRequirements:
+    return SkillRequirements(
+        outcome_reasoning=getattr(skill_result, "outcome_reasoning", "") or "",
+        overall_confidence=float(getattr(skill_result, "overall_confidence", 0.6) or 0.6),
+        required=[
+            RequiredSkill(
+                skill=s.skill,
+                weight=s.weight,
+                confidence=s.confidence,
+                rationale=s.rationale,
+                importance=s.importance,
+            )
+            for s in (getattr(skill_result, "required", []) or [])
+        ],
+        preferred=[
+            PreferredSkill(
+                skill=s.skill,
+                weight=s.weight,
+                confidence=s.confidence,
+                rationale=s.rationale,
+                importance=s.importance,
+            )
+            for s in (getattr(skill_result, "preferred", []) or [])
+        ],
+    )
+
+
+def _workstream_prompt_prefix(ws: dict) -> str:
+    """
+    Workstream-aware prefix that pushes the skills engine to infer skills
+    for THIS stream (including cross-functional domains when relevant).
+    """
+    name = ws.get("name", "Workstream")
+    goal = ws.get("goal", "")
+    domain = ws.get("domain", "strategy")
+    return (
+        f"[WORKSTREAM CONTEXT]\n"
+        f"Name: {name}\n"
+        f"Domain: {domain}\n"
+        f"Goal: {goal}\n\n"
+        f"Only infer skills needed to achieve THIS workstream goal.\n"
+        f"Be domain-appropriate:\n"
+        f"- finance/accounting => procurement, budgeting, financial modelling, accounting, governance\n"
+        f"- commercial => negotiation, contracting, pricing, vendor mgmt\n"
+        f"- legal/risk => compliance, controls, risk mgmt, privacy/security\n"
+        f"- technical => deep learning, data engineering, MLOps, software engineering\n\n"
+        f"Do NOT bias toward technical skills unless the domain is technical/delivery.\n\n"
+    )
+
+
+async def infer_workstream_requirements(query: str, ws: dict) -> SkillRequirements:
+    """
+    Calls your existing SkillInferenceEngine, but with a workstream-specific prefix.
+    """
+    ws_query = _workstream_prompt_prefix(ws) + query
+    skill_result = await asyncio.to_thread(skill_engine.infer, ws_query)
+    return _skill_result_to_requirements(skill_result)
+
+
 async def find_candidates_for_workstream(
     db_path: str,
     query: str,
     ws: dict,
-    top_n_pool: int = 15,       # pool size to search over
-    max_team_size: int = 3,     # how many people to recommend per workstream
+    top_n_pool: int = 15,
+    max_team_size: int = 3,
 ) -> dict:
     """
-    Returns a workstream recommendation object:
-      - candidate_pool: top individuals (partial matches allowed)
-      - team: 1..max_team_size people chosen to cover required skills (set-cover)
-      - team_coverage_required + missing_required
-      - workstream_score: sum of team members' scores
+    Workstream pipeline:
+      1) infer skills for this workstream (domain-aware)
+      2) map to catalogue
+      3) infer complexity profile for this workstream (targets)
+      4) score candidates
+      5) pick a small team via set-cover on required skills
     """
     catalogue = getattr(skill_engine, "skills", []) or []
 
-    req_raw = ws.get("required_skills", []) or []
-    pref_raw = ws.get("preferred_skills", []) or []
+    # 1) skills inference per stream
+    reqs_obj = await infer_workstream_requirements(query, ws)
 
-    req_mapped, _ = map_skill_strings_to_catalog(req_raw, catalogue)
-    pref_mapped, _ = map_skill_strings_to_catalog(pref_raw, catalogue)
+    # 2) map inferred skills to DB catalogue strings
+    req_names = [s.skill for s in (reqs_obj.required or [])]
+    pref_names = [s.skill for s in (reqs_obj.preferred or [])]
 
-    required_objs: List[RequiredSkill] = [
-        RequiredSkill(skill=s, weight=0.7, confidence=0.7, rationale="workstream required", importance=0.8)
-        for s in req_mapped
-    ]
-    preferred_objs: List[PreferredSkill] = [
-        PreferredSkill(skill=s, weight=0.5, confidence=0.5, rationale="workstream preferred", importance=0.5)
-        for s in pref_mapped
-    ]
+    req_mapped, _ = map_skill_strings_to_catalog(req_names, catalogue)
+    pref_mapped, _ = map_skill_strings_to_catalog(pref_names, catalogue)
 
-    req_obj = SkillRequirements(
-        outcome_reasoning=ws.get("goal", "") or ws.get("reasoning", ""),
-        overall_confidence=0.6,
+    # 2b) rebuild requirements using mapped strings
+    required_objs: List[RequiredSkill] = []
+    for i, s in enumerate(reqs_obj.required or []):
+        if i < len(req_mapped):
+            required_objs.append(
+                RequiredSkill(
+                    skill=req_mapped[i],
+                    weight=float(s.weight),
+                    confidence=float(s.confidence),
+                    rationale=str(s.rationale),
+                    importance=float(s.importance),
+                )
+            )
+
+    preferred_objs: List[PreferredSkill] = []
+    for i, s in enumerate(reqs_obj.preferred or []):
+        if i < len(pref_mapped):
+            preferred_objs.append(
+                PreferredSkill(
+                    skill=pref_mapped[i],
+                    weight=float(s.weight),
+                    confidence=float(s.confidence),
+                    rationale=str(s.rationale),
+                    importance=float(s.importance),
+                )
+            )
+
+    reqs_obj = SkillRequirements(
+        outcome_reasoning=reqs_obj.outcome_reasoning,
+        overall_confidence=reqs_obj.overall_confidence,
         required=required_objs,
         preferred=preferred_objs,
     )
 
-    if not req_obj.required:
+    if not reqs_obj.required:
         return {
+            "requirements": {
+                "required": [],
+                "preferred": [],
+                "understanding": reqs_obj.outcome_reasoning,
+                "confidence": reqs_obj.overall_confidence,
+            },
+            "complexity": {"score": 0.0, "label": "low", "reasoning": "No required skills inferred."},
             "candidate_pool": [],
             "team": [],
             "team_coverage_required": 0.0,
@@ -252,30 +344,24 @@ async def find_candidates_for_workstream(
             "workstream_score": 0.0,
         }
 
-    # Simple stub profile (keeps scoring logic working without needing per-workstream target levels)
-    profile_stub = ComplexityProfile(
-        complexity_score=0.5,
-        complexity_label="medium",
-        targets_required=[],
-        targets_preferred=[],
-        reasoning="workstream stub profile",
-    )
+    # 3) workstream complexity profile (targets)
+    profile = infer_complexity_profile(ollama_client, CHAT_MODEL, query, reqs_obj)
 
-    # 1) pool of candidates (partial matches allowed)
+    # 4) candidate pool
     pool: List[EmployeeMatch] = await asyncio.to_thread(
         recommend_top_candidates,
         db_path,
         query,
-        req_obj,
-        profile_stub,
+        reqs_obj,
+        profile,
         top_n_pool,
-        False,  # strict_required=False
+        False,  # strict_required=False for pool
     )
 
-    # 2) select a team that covers required skills (multi-person per workstream)
+    # 5) set-cover team selection (covers required skills across people)
     team, team_cov, missing = recommend_team_for_required_coverage(
         candidates=pool,
-        reqs=req_obj,
+        reqs=reqs_obj,
         max_team_size=max_team_size,
     )
 
@@ -293,11 +379,48 @@ async def find_candidates_for_workstream(
         }
 
     return {
+        "requirements": {
+            "required": [
+                {
+                    "skill": s.skill,
+                    "weight": s.weight,
+                    "confidence": s.confidence,
+                    "importance": s.importance,
+                    "rationale": s.rationale,
+                    "target_level": next(
+                        (t.target_level for t in (profile.targets_required or []) if t.skill.lower() == s.skill.lower()),
+                        "skilled",
+                    ),
+                }
+                for s in (reqs_obj.required or [])
+            ],
+            "preferred": [
+                {
+                    "skill": s.skill,
+                    "weight": s.weight,
+                    "confidence": s.confidence,
+                    "importance": s.importance,
+                    "rationale": s.rationale,
+                    "target_level": next(
+                        (t.target_level for t in (profile.targets_preferred or []) if t.skill.lower() == s.skill.lower()),
+                        "awareness",
+                    ),
+                }
+                for s in (reqs_obj.preferred or [])
+            ],
+            "understanding": reqs_obj.outcome_reasoning,
+            "confidence": reqs_obj.overall_confidence,
+        },
+        "complexity": {
+            "score": profile.complexity_score,
+            "label": profile.complexity_label,
+            "reasoning": profile.reasoning,
+        },
         "candidate_pool": [emp_to_dict(m) for m in pool[: min(10, len(pool))]],
         "team": [emp_to_dict(m) for m in team],
-        "team_coverage_required": float(team_cov),
-        "missing_required": list(missing or []),
-        "workstream_score": float(workstream_team_score(team)),
+        "team_coverage_required": team_cov,
+        "missing_required": missing,
+        "workstream_score": workstream_team_score(team),
     }
 
 
@@ -337,7 +460,7 @@ async def list_models():
 
 
 # ---------------------------
-# Core processing pipeline
+# Fallback processing
 # ---------------------------
 async def process_skills_query_fallback(query: str, top_n: int = 5) -> Dict[str, Any]:
     employees = db.search_employees_by_keywords(query, limit=top_n)
@@ -375,6 +498,9 @@ async def process_skills_query_fallback(query: str, top_n: int = 5) -> Dict[str,
     }
 
 
+# ---------------------------
+# Core processing pipeline
+# ---------------------------
 async def process_skills_query(
     query: str,
     top_n: int = 5,
@@ -383,94 +509,75 @@ async def process_skills_query(
     logger.info(f"📥 Processing query: {query}")
     logger.info(f"   Parameters: top_n={top_n}, strict_required={strict_required}")
 
+    # 1) Complexity (global) - do NOT depend on skill inference
     try:
-        logger.info("🔍 Step 1: Inferring skills using Ollama...")
-        skill_result = skill_engine.infer(query)
-        logger.info(
-            f"✅ Skill inference complete: {len(skill_result.required)} required, {len(skill_result.preferred)} preferred"
+        logger.info("🔍 Step 1: Complexity analysis...")
+        # allow empty reqs here; your infer_complexity_profile is robust to it
+        empty_reqs = SkillRequirements(outcome_reasoning="", overall_confidence=0.3, required=[], preferred=[])
+        complexity = infer_complexity_profile(
+            ollama_client,
+            CHAT_MODEL,
+            query,
+            empty_reqs,
         )
+        logger.info(f"✅ Complexity: {complexity.complexity_label} ({complexity.complexity_score:.2f})")
     except Exception as e:
-        logger.error(f"❌ Ollama error: {type(e).__name__}: {str(e)}")
-        logger.error(f"📋 Full traceback:\n{traceback.format_exc()}")
-        logger.warning("⚠️  Falling back to keyword search mode")
-        return await process_skills_query_fallback(query, top_n)
+        logger.warning(f"⚠️ Complexity analysis failed: {type(e).__name__}: {str(e)}")
+        complexity = ComplexityProfile(
+            complexity_score=0.5,
+            complexity_label="medium",
+            targets_required=[],
+            targets_preferred=[],
+            reasoning="Complexity defaulted.",
+        )
 
-    # Convert to SkillRequirements
-    logger.info("🔄 Converting skill inference results to requirements format...")
-    requirements = SkillRequirements(
-        outcome_reasoning=skill_result.outcome_reasoning,
-        overall_confidence=skill_result.overall_confidence,
-        required=[
-            RequiredSkill(
-                skill=s.skill,
-                weight=s.weight,
-                confidence=s.confidence,
-                rationale=s.rationale,
-                importance=s.importance,
-            )
-            for s in skill_result.required
-        ],
-        preferred=[
-            PreferredSkill(
-                skill=s.skill,
-                weight=s.weight,
-                confidence=s.confidence,
-                rationale=s.rationale,
-                importance=s.importance,
-            )
-            for s in skill_result.preferred
-        ],
-    )
-    logger.info("✅ Requirements format conversion complete")
-
-    # Step 2: Complexity analysis
-    logger.info("🔍 Step 2: Analyzing query complexity...")
-    complexity = infer_complexity_profile(
-        ollama_client,
-        CHAT_MODEL,
-        query,
-        requirements,
-    )
-    logger.info(
-        f"✅ Complexity analysis complete: {complexity.complexity_label} (score: {complexity.complexity_score:.2f})"
-    )
-
-    # Step 2b: Team plan + per-workstream candidates
-    team_plan_result = None
+    # 2) Team/workstream planning FIRST (no skills)
     try:
-        logger.info("👥 Step 2b: Inferring team plan...")
+        logger.info("👥 Step 2: Team/workstream planning...")
         team_plan_obj = infer_team_plan(
             client=skill_engine.client,
             chat_model=CHAT_MODEL,
             query=query,
-            reqs=requirements,
             profile=complexity,
             max_team_size=5,
         )
         logger.info(
-            f"✅ Team plan: needs_team={team_plan_obj.needs_team}, team_size={team_plan_obj.team_size}, workstreams={len(team_plan_obj.workstreams)}"
+            f"✅ Team plan: intent={getattr(team_plan_obj,'intent',None)}, "
+            f"mode={getattr(team_plan_obj,'recommendation_mode',None)}, "
+            f"span={getattr(team_plan_obj,'organisational_span',None)}, "
+            f"needs_team={getattr(team_plan_obj,'needs_team',None)}, size={getattr(team_plan_obj,'team_size',None)}"
         )
+    except Exception as e:
+        logger.warning(f"⚠️ Team planning failed: {type(e).__name__}: {str(e)}")
+        logger.warning(traceback.format_exc())
+        team_plan_obj = None
 
-        logger.info("🔍 Finding candidates for each workstream...")
+    # 3) Workstream-specific skills + candidates
+    team_plan_result = None
+    if team_plan_obj:
+        logger.info("🔍 Step 3: Per-workstream skills + candidates...")
         tasks = []
-        for ws in team_plan_obj.workstreams[:5]:
+        ws_dicts: List[dict] = []
+        for ws in (getattr(team_plan_obj, "workstreams", []) or [])[:5]:
             ws_dict = {
-                "name": getattr(ws, "name", ""),
-                "goal": getattr(ws, "goal", ""),
-                "required_skills": getattr(ws, "required_skills", []) or [],
-                "preferred_skills": getattr(ws, "preferred_skills", []) or [],
-                "reasoning": getattr(ws, "reasoning", ""),
+                "name": getattr(ws, "name", "") or "Workstream",
+                "goal": getattr(ws, "goal", "") or "",
+                "domain": getattr(ws, "domain", "") or "strategy",
+                "reasoning": getattr(ws, "reasoning", "") or "",
             }
+            ws_dicts.append(ws_dict)
             tasks.append(find_candidates_for_workstream(DB_PATH, query, ws_dict, top_n_pool=15, max_team_size=3))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         workstreams_out: List[dict] = []
-        for idx, ws in enumerate(team_plan_obj.workstreams[: len(results)]):
+        for idx, ws in enumerate(ws_dicts):
             reco = results[idx]
             if isinstance(reco, Exception):
-                logger.warning(f"⚠️ Workstream candidate search failed: {reco}")
+                logger.warning(f"⚠️ Workstream candidate search failed for {ws.get('name')}: {reco}")
                 reco = {
+                    "requirements": {"required": [], "preferred": [], "understanding": "", "confidence": 0.0},
+                    "complexity": {"score": 0.0, "label": "low", "reasoning": "failed"},
                     "candidate_pool": [],
                     "team": [],
                     "team_coverage_required": 0.0,
@@ -478,77 +585,55 @@ async def process_skills_query(
                     "workstream_score": 0.0,
                 }
 
-            workstreams_out.append(
-                {
-                    "name": getattr(ws, "name", "") or "Workstream",
-                    "goal": getattr(ws, "goal", "") or "",
-                    "required_skills": getattr(ws, "required_skills", []) or [],
-                    "preferred_skills": getattr(ws, "preferred_skills", []) or [],
-                    "reasoning": getattr(ws, "reasoning", "") or "",
-                    "workstream_reco": reco,
-                }
-            )
+            workstreams_out.append({**ws, "workstream_reco": reco})
 
         team_plan_result = {
+            "intent": getattr(team_plan_obj, "intent", "talent_search"),
+            "recommendation_mode": getattr(team_plan_obj, "recommendation_mode", "many_candidates"),
+            "organisational_span": float(getattr(team_plan_obj, "organisational_span", 0.0) or 0.0),
             "needs_team": bool(getattr(team_plan_obj, "needs_team", False)),
             "team_size": int(getattr(team_plan_obj, "team_size", 1) or 1),
             "reasoning": getattr(team_plan_obj, "reasoning", "") or "",
             "workstreams": workstreams_out,
         }
-        logger.info("✅ Per-workstream candidate collection complete")
+
+    # 4) Optional overall candidates:
+    #    If you want an overall list, infer a GLOBAL set of skills at the end.
+    global_requirements = None
+    matches: List[EmployeeMatch] = []
+    try:
+        logger.info("🔍 Step 4 (optional): Global skill inference for overall candidate list...")
+        global_skill_result = await asyncio.to_thread(skill_engine.infer, query)
+        global_requirements = _skill_result_to_requirements(global_skill_result)
+
+        # If no required skills, skip overall scoring
+        if global_requirements.required:
+            profile_global = infer_complexity_profile(ollama_client, CHAT_MODEL, query, global_requirements)
+            matches = recommend_top_candidates(
+                DB_PATH,
+                query,
+                global_requirements,
+                profile_global,
+                top_n=top_n,
+                strict_required=strict_required,
+            )
+            logger.info(f"✅ Overall matches: {len(matches)}")
     except Exception as e:
-        logger.warning(f"⚠️ Team plan / per-workstream candidate search failed: {type(e).__name__}: {str(e)}")
-        logger.warning(traceback.format_exc())
-        team_plan_result = None
+        logger.warning(f"⚠️ Overall matching skipped/failed: {type(e).__name__}: {str(e)}")
 
-    # Step 3: Overall matching
-    logger.info("🔍 Step 3: Finding matching employees...")
-    matches = recommend_top_candidates(
-        DB_PATH,
-        query,
-        requirements,
-        complexity,
-        top_n=top_n,
-        strict_required=strict_required,
-    )
-    logger.info(f"✅ Found {len(matches)} matching candidates")
-
-    result = {
+    # Build response (main value is team_plan_result with per-stream skills)
+    result: Dict[str, Any] = {
         "query": query,
-        "understanding": skill_result.outcome_reasoning,
+        "understanding": (
+            (global_requirements.outcome_reasoning if global_requirements else "")
+            or "Interpreting the request, planning workstreams, then inferring skills per stream."
+        ),
         "complexity": {
             "score": complexity.complexity_score,
             "label": complexity.complexity_label,
             "reasoning": complexity.reasoning,
         },
-        "required_skills": [
-            {
-                "skill": s.skill,
-                "weight": s.weight,
-                "confidence": s.confidence,
-                "importance": s.importance,
-                "target_level": next(
-                    (t.target_level for t in complexity.targets_required if t.skill.lower() == s.skill.lower()),
-                    "skilled",
-                ),
-                "rationale": s.rationale,
-            }
-            for s in (skill_result.required or [])
-        ],
-        "preferred_skills": [
-            {
-                "skill": s.skill,
-                "weight": s.weight,
-                "confidence": s.confidence,
-                "importance": s.importance,
-                "target_level": next(
-                    (t.target_level for t in complexity.targets_preferred if t.skill.lower() == s.skill.lower()),
-                    "awareness",
-                ),
-                "rationale": s.rationale,
-            }
-            for s in (skill_result.preferred or [])
-        ],
+        "team_plan": team_plan_result,
         "matches": [
             {
                 "employee_id": m.employee_id,
@@ -556,7 +641,7 @@ async def process_skills_query(
                 "email": m.email_address,
                 "position": m.position_title,
                 "team": m.team,
-                "score": m.total_score,  # overall score
+                "score": m.total_score,
                 "coverage_required": m.coverage_required,
                 "coverage_preferred": m.coverage_preferred,
                 "reasoning": m.reasoning,
@@ -565,8 +650,7 @@ async def process_skills_query(
             for m in (matches or [])
         ],
         "total_matches": len(matches or []),
-        "confidence": skill_result.overall_confidence,
-        "team_plan": team_plan_result,
+        "confidence": float(getattr(global_requirements, "overall_confidence", 0.6) or 0.6) if global_requirements else 0.6,
     }
 
     return result
@@ -576,82 +660,81 @@ async def process_skills_query(
 # Response formatting for OpenWebUI
 # ---------------------------
 def format_response(result: Dict[str, Any]) -> str:
-    matches = result.get("matches", []) or []
     complexity = result.get("complexity", {}) or {}
-    required_skills = result.get("required_skills", []) or []
-    preferred_skills = result.get("preferred_skills", []) or []
     team_plan = result.get("team_plan")
-
-    if not matches:
-        return (
-            "❌ **No matches found**\n\n"
-            "**Query Understanding:**\n"
-            f"{result.get('understanding', 'Unable to process query')}\n\n"
-            "**Required Skills:**\n"
-            f"{', '.join([s.get('skill','') for s in required_skills[:5] if s.get('skill')])}\n\n"
-            f"**Complexity:** {complexity.get('label', 'unknown')} ({float(complexity.get('score', 0.0)):.2f})\n"
-        )
+    matches = result.get("matches", []) or []
 
     lines: List[str] = [
-        f"✅ **Found {len(matches)} matching candidate(s)**\n",
-        "**Query Understanding:**",
-        f"{result.get('understanding', '')}\n",
+        f"✅ **Processed request**\n",
+        "**Query:**",
+        f"{result.get('query','')}\n",
         f"**Complexity:** {complexity.get('label', 'medium')} ({float(complexity.get('score', 0.5)):.2f})",
         f"_{complexity.get('reasoning', '')}_\n",
     ]
 
-    if required_skills:
-        lines.append("**Required Skills:**")
-        for s in required_skills[:8]:
-            lines.append(
-                f"  • {s.get('skill')} (target: {s.get('target_level','skilled')}, "
-                f"importance: {float(s.get('importance', 0.0)):.2f})"
-            )
-        lines.append("")
-
-    if preferred_skills:
-        lines.append("**Preferred Skills:**")
-        for s in preferred_skills[:8]:
-            lines.append(
-                f"  • {s.get('skill')} (target: {s.get('target_level','awareness')}, "
-                f"importance: {float(s.get('importance', 0.0)):.2f})"
-            )
-        lines.append("")
-
+    # Workstreams are the “real” output now
     if team_plan:
-        lines.append("**👥 Team Plan & Who To Talk To:**")
-        lines.append(f"• Needs team: **{bool(team_plan.get('needs_team', False))}**")
-        lines.append(f"• Suggested team size: **{int(team_plan.get('team_size', 1) or 1)}**")
+        intent = team_plan.get("intent", "talent_search")
+        mode = team_plan.get("recommendation_mode", "many_candidates")
+        span = float(team_plan.get("organisational_span", 0.0) or 0.0)
+
+        header = "**👥 Team Plan & Who To Talk To:**"
+        if intent == "talent_search" and span >= 0.30:
+            header = "**👥 Stakeholders & Who To Talk To:**"
+        lines.append(header)
+
+        lines.append(f"• Intent: **{intent}**")
+        lines.append(f"• Mode: **{mode}**")
+        lines.append(f"• Organisational span: **{span:.2f}**")
+        lines.append(f"• Cross-functional input needed: **{bool(team_plan.get('needs_team', False))}**")
+        lines.append(f"• Suggested people to talk to: **{int(team_plan.get('team_size', 1) or 1)}**")
         if team_plan.get("reasoning"):
             lines.append(f"• Reasoning: {team_plan.get('reasoning')}")
         lines.append("")
 
         for ws in (team_plan.get("workstreams", []) or [])[:5]:
-            lines.append(f"### {ws.get('name','Workstream')} — Goal: {ws.get('goal','')}")
-            if ws.get("reasoning"):
-                lines.append(f"_{ws.get('reasoning')}_")
+            ws_name = ws.get("name", "Workstream")
+            ws_goal = ws.get("goal", "")
+            ws_domain = ws.get("domain", "strategy")
+            ws_reasoning = ws.get("reasoning", "")
 
-            reqs = ws.get("required_skills", []) or []
-            prefs = ws.get("preferred_skills", []) or []
-
-            if reqs:
-                lines.append(f"**Required skills:** {', '.join(reqs)}")
-            if prefs:
-                lines.append(f"**Preferred skills:** {', '.join(prefs)}")
+            lines.append(f"### {ws_name} ({ws_domain}) — Goal: {ws_goal}")
+            if ws_reasoning:
+                lines.append(f"_{ws_reasoning}_")
 
             reco = ws.get("workstream_reco") or {}
+            reqs = (reco.get("requirements", {}) or {}).get("required", []) or []
+            prefs = (reco.get("requirements", {}) or {}).get("preferred", []) or []
+
+            # Print inferred skills PER stream (this is the point of your change)
+            if reqs:
+                lines.append("**Required skills (this stream):**")
+                for s in reqs[:8]:
+                    lines.append(
+                        f"  • {s.get('skill')} (target: {s.get('target_level','skilled')}, "
+                        f"importance: {float(s.get('importance', 0.0)):.2f})"
+                    )
+            if prefs:
+                lines.append("**Preferred skills (this stream):**")
+                for s in prefs[:8]:
+                    lines.append(
+                        f"  • {s.get('skill')} (target: {s.get('target_level','awareness')}, "
+                        f"importance: {float(s.get('importance', 0.0)):.2f})"
+                    )
+
             team = reco.get("team") or []
             team_cov = float(reco.get("team_coverage_required", 0.0) or 0.0)
             missing = reco.get("missing_required") or []
             ws_score = float(reco.get("workstream_score", 0.0) or 0.0)
 
-            lines.append(f"**Workstream score:** {ws_score:.3f}")
-            lines.append(f"**Team coverage (required):** {team_cov:.0%}")
+            label = "Workstream score" if intent == "delivery" else "Stakeholder score"
+            lines.append(f"**{label}:** {ws_score:.3f}")
+            lines.append(f"**Coverage (required skills):** {team_cov:.0%}")
             if missing:
                 lines.append(f"**Missing required skills:** {', '.join(missing)}")
 
             if team:
-                lines.append("**Who to talk to (team):**")
+                lines.append("**Who to talk to:**")
                 for c in team:
                     name = c.get("name") or "Unknown"
                     position = c.get("position") or ""
@@ -666,36 +749,37 @@ def format_response(result: Dict[str, Any]) -> str:
                         lines.append(f"- **{name}** — {position}")
                     if email:
                         lines.append(f"  📧 {email}")
-                    lines.append(f"  ✅ Individual score: {score:.3f}, Covers: {cov:.0%} required")
+                    lines.append(f"  ✅ Individual score: {score:.3f}, Covers: {cov:.0%} of required skills")
             else:
-                lines.append("**Who to talk to:** No suitable team found for this workstream.")
+                lines.append("**Who to talk to:** No suitable people found for this stream.")
             lines.append("")
 
-    # Overall candidates
-    lines.append("**👥 Top Candidates (overall):**\n")
-    for i, match in enumerate(matches[:5], 1):
-        lines.append(f"**{i}. {match.get('name','Unknown')}**")
-        if match.get("email"):
-            lines.append(f"   📧 {match.get('email')}")
-        lines.append(f"   💼 {match.get('position','')}")
-        if match.get("team"):
-            lines.append(f"   🏢 Team: {match.get('team')}")
-        lines.append(f"   🎯 Overall score: {float(match.get('score', 0.0)):.3f}")
-        lines.append(f"   📊 Required Coverage: {float(match.get('coverage_required', 0.0)):.0%}")
-        lines.append(f"   📈 Preferred Coverage: {float(match.get('coverage_preferred', 0.0)):.0%}")
+    # Optional overall list
+    if matches:
+        lines.append("**👥 Top Candidates (overall):**\n")
+        for i, match in enumerate(matches[:5], 1):
+            lines.append(f"**{i}. {match.get('name','Unknown')}**")
+            if match.get("email"):
+                lines.append(f"   📧 {match.get('email')}")
+            lines.append(f"   💼 {match.get('position','')}")
+            if match.get("team"):
+                lines.append(f"   🏢 Team: {match.get('team')}")
+            lines.append(f"   🎯 Overall score: {float(match.get('score', 0.0)):.3f}")
+            lines.append(f"   📊 Required Coverage: {float(match.get('coverage_required', 0.0)):.0%}")
+            lines.append(f"   📈 Preferred Coverage: {float(match.get('coverage_preferred', 0.0)):.0%}")
 
-        matched = match.get("matched_skills", []) or []
-        required_matched = [s for s in matched if s.get("type") == "required"][:3]
-        if required_matched:
-            lines.append("   ✅ Key Skills:")
-            for sk in required_matched:
-                level = sk.get("employee_level", "N/A")
-                target = sk.get("target_level", "N/A")
-                verified = "✓" if sk.get("verified") else ""
-                lines.append(f"      • {sk.get('skill')}: {level} (target: {target}) {verified}")
-        lines.append("")
+            matched = match.get("matched_skills", []) or []
+            required_matched = [s for s in matched if s.get("type") == "required"][:3]
+            if required_matched:
+                lines.append("   ✅ Key Skills:")
+                for sk in required_matched:
+                    level = sk.get("employee_level", "N/A")
+                    target = sk.get("target_level", "N/A")
+                    verified = "✓" if sk.get("verified") else ""
+                    lines.append(f"      • {sk.get('skill')}: {level} (target: {target}) {verified}")
+            lines.append("")
 
-    lines.append(f"\n⏱️ *Confidence: {float(result.get('confidence', 0.5)):.0%}*")
+    lines.append(f"\n⏱️ *Confidence: {float(result.get('confidence', 0.6)):.0%}*")
     return "\n".join(lines)
 
 
@@ -718,10 +802,7 @@ async def chat_completions(request: ChatCompletionRequest):
                 break
 
         if not user_message:
-            logger.error("❌ No user message found in request")
             raise HTTPException(status_code=400, detail="No user message found")
-
-        logger.info(f"   User query: {user_message}")
 
         # Guard: OpenWebUI meta-follow-up prompt requests (don’t run pipeline)
         meta_markers = [
@@ -734,11 +815,11 @@ async def chat_completions(request: ChatCompletionRequest):
             response_content = json.dumps(
                 {
                     "follow_ups": [
-                        "What team or product area should this role support?",
-                        "Do you need MLOps/deployment experience as well?",
-                        "What seniority level and timeframe are you hiring for?",
-                        "Should telecom domain knowledge (5G/core) be required or optional?",
-                        "Do you want a single owner or a small team to cover the required skills?",
+                        "What is the outcome you want (hire someone, or deliver a piece of work)?",
+                        "Which organisational domains must be involved (finance, legal, risk, tech, commercial)?",
+                        "Is this discovery/strategy work or delivery/implementation work?",
+                        "What time horizon and constraints (budget, compliance, tooling) matter most?",
+                        "Do you want a single point-of-contact or multiple stakeholders per domain?",
                     ]
                 }
             )
@@ -747,24 +828,13 @@ async def chat_completions(request: ChatCompletionRequest):
                 "object": "chat.completion",
                 "created": int(time.time()),
                 "model": request.model,
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {"role": "assistant", "content": response_content},
-                        "finish_reason": "stop",
-                    }
-                ],
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": response_content}, "finish_reason": "stop"}],
                 "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
             }
 
         logger.info("🚀 Starting query processing pipeline...")
-        result = await process_skills_query(user_message, top_n=5)
-        logger.info("✅ Query processing complete")
-
-        logger.info("📝 Formatting response for OpenWebUI...")
+        result = await process_skills_query(user_message, top_n=5, strict_required=False)
         response_content = format_response(result)
-        logger.info(f"✅ Response formatted ({len(response_content)} characters)")
-        logger.info("=" * 80)
 
         return {
             "id": f"chatcmpl-{time.time()}",

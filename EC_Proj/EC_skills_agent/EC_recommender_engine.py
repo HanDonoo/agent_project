@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Set
+from typing import Dict, List, Optional, Tuple, Set, Any
 
 import requests
 
@@ -129,15 +129,10 @@ def load_employee_skill_matrix(db_path: str) -> Tuple[List[dict], Dict[int, Dict
     Returns:
       employees: list of active employee rows dict
       emp_skills: dict[employee_id][skill_lower] = {"skill_name": str, "level": Optional[str], "verified": bool}
-
-    Ensures skill level is ONLY set when valid (awareness/skilled/advanced/expert), else None.
     """
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
-        employees = [
-            dict(r)
-            for r in conn.execute("SELECT * FROM employees WHERE is_active = 1").fetchall()
-        ]
+        employees = [dict(r) for r in conn.execute("SELECT * FROM employees WHERE is_active = 1").fetchall()]
 
         rows = conn.execute(
             """
@@ -287,17 +282,7 @@ Return JSON exactly in this shape:
 # Scoring
 # =======================
 
-def required_match_value(emp_level: Optional[str], target_level: str) -> float:
-    if not emp_level or emp_level not in PROF_ORDER:
-        return 0.0
-    e = PROF_ORDER[emp_level]
-    t = PROF_ORDER.get((target_level or "").lower().strip(), 0)
-    if t <= 0:
-        return 0.0
-    return 1.0 if e >= t else e / t
-
-
-def proficiency_match_score(emp_level: Optional[str], target_level: str) -> float:
+def _match_ratio(emp_level: Optional[str], target_level: str) -> float:
     if not emp_level or emp_level not in PROF_ORDER:
         return 0.0
     e = PROF_ORDER[emp_level]
@@ -313,17 +298,17 @@ def proficiency_match_score(emp_level: Optional[str], target_level: str) -> floa
 
 def recommend_top_candidates(
     db_path: str,
-    query: str,  # kept for compatibility with main.py; not used directly in scoring
+    query: str,  # kept for compatibility/logging
     reqs: SkillRequirements,
-    profile: ComplexityProfile,
+    profile: Any,
     top_n: int = 20,
     strict_required: bool = False,
     preferred_multiplier: float = 0.33,
 ) -> List[EmployeeMatch]:
     employees, emp_skills = load_employee_skill_matrix(db_path)
 
-    target_req = {t.skill.lower(): t for t in (profile.targets_required or [])}
-    target_pref = {t.skill.lower(): t for t in (profile.targets_preferred or [])}
+    target_req = {t.skill.lower(): t for t in (getattr(profile, "targets_required", None) or [])}
+    target_pref = {t.skill.lower(): t for t in (getattr(profile, "targets_preferred", None) or [])}
 
     required_list = reqs.required or []
     preferred_list = reqs.preferred or []
@@ -356,7 +341,7 @@ def recommend_top_candidates(
             weight = clamp01(rs.weight) * skill_imp * target_imp
 
             if not emp_level:
-                missing_penalty += weight * (0.8 + float(getattr(profile, "complexity_score", 0.5)))
+                missing_penalty += weight * (0.8 + float(getattr(profile, "complexity_score", 0.5) or 0.5))
                 matched.append(
                     {
                         "skill": sk,
@@ -370,7 +355,7 @@ def recommend_top_candidates(
                 )
                 continue
 
-            m = required_match_value(emp_level, target_level)
+            m = _match_ratio(emp_level, target_level)
             if m >= 1.0:
                 required_hits += 1
 
@@ -405,7 +390,7 @@ def recommend_top_candidates(
             target = target_pref.get(sk_key)
             target_level = target.target_level if target else "awareness"
 
-            m = proficiency_match_score(emp_level, target_level)
+            m = _match_ratio(emp_level, target_level)
             if m >= 1.0:
                 preferred_hits += 1
 
@@ -461,34 +446,15 @@ def recommend_top_candidates(
 
 
 # =======================
-# TEAM COVERAGE (SET-COVER)
+# SET-COVER TEAM PICKER
 # =======================
 
 def employee_required_coverage_set(emp: EmployeeMatch) -> Set[str]:
-    """
-    Skills this employee covers for REQUIRED items (meets/exceeds target).
-    Uses match>=1.0 where available; falls back to comparing proficiency labels.
-    """
-    covered: Set[str] = set()
-    for m in (emp.matched_skills or []):
-        if m.get("type") != "required":
-            continue
-        sk = str(m.get("skill", "")).strip().lower()
-        if not sk:
-            continue
-
-        match_val = m.get("match", None)
-        if isinstance(match_val, (int, float)) and float(match_val) >= 1.0:
-            covered.add(sk)
-            continue
-
-        emp_level = (m.get("employee_level") or "").lower().strip()
-        tgt_level = (m.get("target_level") or "").lower().strip()
-        if emp_level in PROF_ORDER and tgt_level in PROF_ORDER:
-            if PROF_ORDER[emp_level] >= PROF_ORDER[tgt_level]:
-                covered.add(sk)
-
-    return covered
+    return {
+        str(m.get("skill", "")).lower().strip()
+        for m in (emp.matched_skills or [])
+        if m.get("type") == "required" and float(m.get("match", 0.0) or 0.0) >= 1.0
+    }
 
 
 def recommend_team_for_required_coverage(
@@ -496,11 +462,6 @@ def recommend_team_for_required_coverage(
     reqs: SkillRequirements,
     max_team_size: int = 3,
 ) -> Tuple[List[EmployeeMatch], float, List[str]]:
-    """
-    Greedy set-cover: select up to max_team_size people that cover as many required skills as possible.
-    This is the mechanism that enables:
-      "If required skills aren't covered by one person, recommend multiple people for the SAME workstream."
-    """
     required = {s.skill.lower().strip() for s in (reqs.required or [])}
     covered: Set[str] = set()
     team: List[EmployeeMatch] = []
@@ -529,11 +490,9 @@ def recommend_team_for_required_coverage(
 
     coverage_ratio = len(covered) / max(1, len(required))
     missing = sorted(required - covered)
+
     return team, round(coverage_ratio, 3), missing
 
 
 def workstream_team_score(team: List[EmployeeMatch]) -> float:
-    """
-    Simple team score: sum of member total_score.
-    """
     return round(sum(m.total_score for m in (team or [])), 6)
