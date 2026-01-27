@@ -92,8 +92,7 @@ def _as_ws_list(x: Any) -> List[dict]:
 
 
 def infer_team_plan(
-    client: Any,  # must expose .chat(model, messages, temperature=...)
-    chat_model: str,
+    client: Any,  # AIClient with .chat(messages, temperature=...)
     query: str,
     profile: Any,  # expects profile.complexity_score / complexity_label
     max_team_size: int = 5,
@@ -157,8 +156,7 @@ Return ONLY valid JSON in this exact shape:
 """.strip()
 
     content = client.chat(
-        chat_model,
-        [
+        messages=[
             {"role": "system", "content": "Return ONLY valid JSON. No extra text."},
             {"role": "user", "content": prompt},
         ],

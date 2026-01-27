@@ -132,14 +132,22 @@ try:
     )
     logger.info("✅ Skill inference engine initialized")
 
-    # For complexity analysis (still uses Ollama client for now)
+    # For complexity analysis - create a wrapper for backward compatibility
     logger.info("🤖 Initializing complexity analysis client...")
-    if config.AI_PROVIDER == "ollama":
-        ollama_client = OllamaClient(config.OLLAMA_BASE_URL)
-    else:
-        # For Gemini, we'll use a wrapper that mimics OllamaClient interface
-        # This is a temporary solution until we refactor complexity analysis
-        ollama_client = OllamaClient(config.OLLAMA_BASE_URL) if config.AI_PROVIDER == "ollama" else None
+
+    # Create an adapter that wraps AIClient to work with old OllamaClient interface
+    class AIClientAdapter:
+        """Adapter to make AIClient work with old OllamaClient interface"""
+        def __init__(self, ai_client, model):
+            self.ai_client = ai_client
+            self.model = model
+            self.base_url = getattr(ai_client, 'base_url', 'N/A')
+
+        def chat(self, model, messages, temperature=0.2, timeout=300):
+            """Old interface: chat(model, messages, temperature)"""
+            return self.ai_client.chat(messages=messages, temperature=temperature, timeout=timeout)
+
+    ollama_client = AIClientAdapter(ai_client, CHAT_MODEL)
     logger.info("✅ Complexity analysis client initialized")
 
     logger.info("=" * 80)
@@ -578,7 +586,6 @@ async def process_skills_query(
         logger.info("👥 Step 2: Team/workstream planning...")
         team_plan_obj = infer_team_plan(
             client=skill_engine.client,
-            chat_model=CHAT_MODEL,
             query=query,
             profile=complexity,
             max_team_size=5,
