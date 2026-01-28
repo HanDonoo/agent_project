@@ -278,7 +278,14 @@ def recommend_top_candidates(
     top_n: int = 20,
     strict_required: bool = False,
     preferred_multiplier: float = 0.33,
+    # NEW: gate for sanity
+    min_required_signal: float = 0.34,  # require ~>= 1/3 of required skills hit at ANY level (or better)
 ) -> List[EmployeeMatch]:
+    """
+    Key behavioural change (small but critical):
+      - We now FILTER OUT employees who show no evidence on required skills.
+      - This prevents "Account Manager recommended for Deep Learning engineer" when they have None/None on required skills.
+    """
     employees, emp_skills = load_employee_skill_matrix(db_path)
 
     target_req = {t.skill.lower(): t for t in (getattr(profile, "targets_required", None) or [])}
@@ -294,7 +301,8 @@ def recommend_top_candidates(
         skills = emp_skills.get(eid, {})
 
         total = 0.0
-        required_hits = 0
+        required_hits_at_target = 0     # match >= 1.0
+        required_hits_any = 0           # emp has the skill at ANY prof level
         preferred_hits = 0
         missing_penalty = 0.0
         matched: List[dict] = []
@@ -329,9 +337,12 @@ def recommend_top_candidates(
                 )
                 continue
 
+            # has *some* evidence on this required skill
+            required_hits_any += 1
+
             m = _match_ratio(emp_level, target_level)
             if m >= 1.0:
-                required_hits += 1
+                required_hits_at_target += 1
 
             conf = clamp01(0.5 * rs.confidence + 0.5 * (target.target_confidence if target else 0.6))
             v_bonus = 0.08 if bool(emp.get("verified")) else 0.0
@@ -392,13 +403,21 @@ def recommend_top_candidates(
 
         total -= missing_penalty
 
-        coverage_required = required_hits / max(1, len(required_list))
+        # Coverage measures
+        coverage_required_at_target = required_hits_at_target / max(1, len(required_list))
+        coverage_required_any = required_hits_any / max(1, len(required_list))
         coverage_preferred = preferred_hits / max(1, len(preferred_list))
 
-        if strict_required and coverage_required < 1.0:
+        # STRICT filter stays the same
+        if strict_required and coverage_required_at_target < 1.0:
             continue
 
-        total *= (0.7 + 0.3 * coverage_required)
+        # NEW: sanity gate — must have SOME required evidence
+        if required_list and coverage_required_any < min_required_signal:
+            continue
+
+        # Re-weight total by coverage at target (keeps behaviour consistent but less noisy)
+        total *= (0.7 + 0.3 * coverage_required_at_target)
 
         results.append(
             EmployeeMatch(
@@ -408,9 +427,9 @@ def recommend_top_candidates(
                 position_title=e["position_title"],
                 team=e.get("team"),
                 total_score=round(total, 6),
-                coverage_required=round(coverage_required, 3),
+                coverage_required=round(coverage_required_at_target, 3),
                 coverage_preferred=round(coverage_preferred, 3),
-                reasoning=f"required={coverage_required:.2f}, preferred={coverage_preferred:.2f}",
+                reasoning=f"required_at_target={coverage_required_at_target:.2f}, required_any={coverage_required_any:.2f}, preferred={coverage_preferred:.2f}",
                 matched_skills=matched,
             )
         )

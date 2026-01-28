@@ -98,6 +98,7 @@ def infer_team_plan(
 You are deciding how a request should be handled: as a talent search (who to talk to) or as delivery planning (workstreams).
 
 You MUST output:
+
 1) intent:
    - "talent_search": user wants people to talk to / recommendations / who can help
    - "delivery": user wants discovery, strategy, execution, build, rollout, operations
@@ -107,8 +108,13 @@ You MUST output:
    - high span means multiple stakeholders are required even if no delivery happens yet
 
 3) workstreams:
-   - For intent="talent_search": output ONE workstream named "Stakeholders" with domains implied in goal.
-   - For intent="delivery": output 2–5 distinct workstreams with a domain tag for each.
+   - For intent="talent_search":
+       - output 1–5 stakeholder workstreams (NOT just one)
+       - each workstream should have a clear name and a specific goal
+       - names should be human-friendly and specific (examples: "Technical Requirements", "Commercial & Procurement", "Risk Management", "Legal & Compliance", "Finance Constraints")
+       - choose an appropriate domain tag for each (finance|commercial|legal|risk|technical|ops|strategy)
+   - For intent="delivery":
+       - output 2–5 distinct workstreams with a domain tag for each.
 
 Complexity (context):
 - score: {complexity_score}
@@ -121,7 +127,7 @@ Return ONLY valid JSON in this exact shape:
 {{
   "intent": "talent_search|delivery",
   "organisational_span": 0.0,
-  "reasoning": "1-3 sentences",
+  "reasoning": "1-3 sentences (why these workstreams and why cross-functional or not)",
   "workstreams": [
     {{
       "name": "Workstream name",
@@ -132,6 +138,7 @@ Return ONLY valid JSON in this exact shape:
   ]
 }}
 """.strip()
+
 
     content = client.chat(
         messages=[
@@ -216,6 +223,8 @@ Return ONLY valid JSON in this exact shape:
         needs_team = team_size > 1
         recommendation_mode: Literal["many_candidates", "team_workstreams"] = "team_workstreams"
     else:
+        # talent_search: allow multiple stakeholder workstreams (2–5) so output matches the example style
+        # We keep recommendation_mode="many_candidates" and team sizing logic, but DO NOT collapse to a single stream.
         if organisational_span < 0.30:
             team_size = 1
         elif organisational_span < 0.55:
@@ -228,15 +237,8 @@ Return ONLY valid JSON in this exact shape:
         needs_team = team_size > 1
         recommendation_mode = "many_candidates"
 
-        ws0 = ws_out[0]
-        ws_out = [
-            WorkstreamPlan(
-                name="Stakeholders",
-                goal=ws0.goal or "Identify the right cross-functional people to talk to.",
-                domain="strategy",
-                reasoning=ws0.reasoning or "Stakeholders inferred from organisational span.",
-            )
-        ]
+        # Keep up to team_size workstreams (already inferred by the model)
+        ws_out = ws_out[:team_size]
 
     team_size = _clamp_int(team_size, 1, max_team_size, 1)
 
