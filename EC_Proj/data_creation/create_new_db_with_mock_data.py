@@ -355,11 +355,11 @@ def seed_telecom_org(conn: sqlite3.Connection) -> None:
         leader_id = int(leader_row["people_leader_id"]) if leader_row and leader_row["people_leader_id"] else None
 
         if role == "chief":
-            k = rng.randint(10, 16)
+            k = rng.randint(20, 30)
         elif role == "manager":
-            k = rng.randint(8, 14)
+            k = rng.randint(15, 25)
         else:
-            k = rng.randint(6, 12)
+            k = rng.randint(10, 20)
 
         k = min(k, len(SKILLS_CATALOGUE))
         chosen = rng.sample(SKILLS_CATALOGUE, k)

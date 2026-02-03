@@ -59,13 +59,13 @@ class OllamaClient(AIClient):
 class GeminiClient(AIClient):
     """Google Gemini API client"""
     
-    def __init__(self, api_key: str, model: str = "gemini-2.0-flash-exp"):
+    def __init__(self, api_key: str, model: str = "gemini-1.5-flash"):
         if not api_key:
             raise ValueError("Gemini API key is required")
         
         self.api_key = api_key
         self.model = model
-        self.base_url = "https://generativelanguage.googleapis.com/v1beta"
+        self.base_url = "https://generativelanguage.googleapis.com/v1"
         logger.info(f"🌟 Initialized Gemini client: model: {model}")
     
     def chat(self, messages: List[Dict[str, str]], temperature: float = 0.2, timeout: int = 300) -> str:
@@ -140,6 +140,13 @@ class GeminiClient(AIClient):
             logger.error(f"❌ Gemini error: {e}")
             raise
 
+    def list_models(self, timeout: int = 30) -> dict:
+        url = f"{self.base_url}/models?key={self.api_key}"
+        r = requests.get(url, timeout=timeout)
+        r.raise_for_status()
+        return r.json()
+
+
 
 def create_ai_client(provider: str, **kwargs) -> AIClient:
     """
@@ -160,9 +167,10 @@ def create_ai_client(provider: str, **kwargs) -> AIClient:
             model=kwargs.get("model", "llama3.2:3b")
         )
     elif provider == "gemini":
+        
         return GeminiClient(
             api_key=kwargs.get("api_key", ""),
-            model=kwargs.get("model", "gemini-2.0-flash-exp")
+            model=kwargs.get("model", "gemini-1.5-flash")
         )
     else:
         raise ValueError(f"Unknown AI provider: {provider}. Must be 'ollama' or 'gemini'")

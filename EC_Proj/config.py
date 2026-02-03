@@ -18,7 +18,7 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 
 # Gemini Configuration (if using Gemini)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")  # 从环境变量读取
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")  # 或 gemini-1.5-flash
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")  # 或 gemini-1.5-flash
 
 # Server Configuration
 API_PORT = int(os.getenv("API_PORT", "8001"))

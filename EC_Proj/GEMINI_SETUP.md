@@ -50,7 +50,7 @@ AI_PROVIDER=gemini
 
 # Gemini API Configuration
 GEMINI_API_KEY=你的_API_KEY_这里
-GEMINI_MODEL=gemini-2.0-flash-exp
+GEMINI_MODEL=gemini-1.5-flash
 
 # Server Configuration
 API_PORT=8001
