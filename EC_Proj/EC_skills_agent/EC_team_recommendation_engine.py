@@ -109,8 +109,11 @@ You MUST output:
 
 3) workstreams:
    - For intent="talent_search":
-       - output 1–5 stakeholder workstreams (NOT just one)
+       - output 2–4 stakeholder workstreams only if they are meaningfully different
+       - avoid overlapping workstreams (don’t repeat the same skills/goal twice)
+       - if the request is primarily technical, keep it to 1–2 technical workstreams max
        - each workstream should have a clear name and a specific goal
+       - each goal must be phrased as a concrete outcome. Avoid generic goals like ‘manage’, ‘support’, ‘assess’ unless paired with a specific deliverable
        - names should be human-friendly and specific (examples: "Technical Requirements", "Commercial & Procurement", "Risk Management", "Legal & Compliance", "Finance Constraints")
        - choose an appropriate domain tag for each (finance|commercial|legal|risk|technical|ops|strategy)
    - For intent="delivery":

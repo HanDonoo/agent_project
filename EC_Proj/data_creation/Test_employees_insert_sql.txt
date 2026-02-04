@@ -4,7 +4,7 @@
 --   sqlite3 data/employee_directory_200_mock.db < ec_mock_employees_seed.sql
 --
 -- Notes:
--- - Uses employee IDs 901–905 so you can easily remove later.
+-- - Uses employee IDs 901–906 so you can easily remove later.
 -- - Uses INSERT OR IGNORE for skills so it’s safe to re-run.
 -- - Adjust names/emails/teams/skills below as you like.
 
@@ -19,6 +19,11 @@ BEGIN TRANSACTION;
 -- Valid Employee 1 — Perfect technical match
 INSERT OR REPLACE INTO employees (id, formal_name, email_address, position_title, team, is_active)
 VALUES (901, 'Valid Employee1 (TEST)', 'valid.employee1@company.co.nz', 'Senior Data Engineer', 'Data Platform', 1);
+
+-- Valid Employee 1.1 — Perfect technical match
+INSERT OR REPLACE INTO employees (id, formal_name, email_address, position_title, team, is_active)
+VALUES (906, 'Valid Employee1.1 (TEST)', 'valid.employee1.1@company.co.nz', 'Senior Data Engineer', 'Data Platform', 1);
+
 
 -- Valid Employee 2 — Partial match, strong domain
 INSERT OR REPLACE INTO employees (id, formal_name, email_address, position_title, team, is_active)
@@ -53,7 +58,9 @@ INSERT OR IGNORE INTO skills (name) VALUES
   ('Reporting'),
   ('Compliance & Controls'),
   ('Risk Strategy'),
-  ('Data Privacy');
+  ('Data Privacy'),
+  ('Test1'),
+  ('Test2');
 
 ----------------------------------------------------------------------
 -- 3) Employee ↔ Skill links (edit freely)
@@ -72,6 +79,19 @@ INSERT INTO employee_skills (employee_id, skill_id, proficiency_level, is_verifi
 SELECT 901, id, 'advanced', 1 FROM skills WHERE name = 'Cloud Platforms';
 INSERT INTO employee_skills (employee_id, skill_id, proficiency_level, is_verified)
 SELECT 901, id, 'skilled', 1 FROM skills WHERE name = 'Machine Learning';
+
+-- Employee 906 — Valid Employee1.1 (TEST)
+INSERT INTO employee_skills (employee_id, skill_id, proficiency_level, is_verified)
+SELECT 906, id, 'expert', 1 FROM skills WHERE name = 'Data Engineering';
+INSERT INTO employee_skills (employee_id, skill_id, proficiency_level, is_verified)
+SELECT 906, id, 'advanced', 1 FROM skills WHERE name = 'Cloud Platforms';
+INSERT INTO employee_skills (employee_id, skill_id, proficiency_level, is_verified)
+SELECT 906, id, 'skilled', 1 FROM skills WHERE name = 'Machine Learning';
+INSERT INTO employee_skills (employee_id, skill_id, proficiency_level, is_verified)
+SELECT 906, id, 'expert', 1 FROM skills WHERE name = 'Test1';
+INSERT INTO employee_skills (employee_id, skill_id, proficiency_level, is_verified)
+SELECT 906, id, 'advanced', 1 FROM skills WHERE name = 'Test2';
+
 
 -- Employee 902 — Valid Employee2 (TEST)
 INSERT INTO employee_skills (employee_id, skill_id, proficiency_level, is_verified)

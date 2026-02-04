@@ -55,6 +55,7 @@ from EC_skills_agent.EC_recommender_engine import (
     EmployeeMatch,
     recommend_team_for_required_coverage,
     workstream_team_score,
+    load_employee_all_skills,
 )
 
 from EC_skills_agent.EC_team_recommendation_engine import infer_team_plan
@@ -260,28 +261,26 @@ def _skill_result_to_requirements(skill_result) -> SkillRequirements:
         ],
     )
 
-
 def _workstream_prompt_prefix(ws: dict) -> str:
-    """
-    Workstream-aware prefix that pushes the skills engine to infer skills
-    for THIS stream (including cross-functional domains when relevant).
-    """
     name = ws.get("name", "Workstream")
     goal = ws.get("goal", "")
     domain = ws.get("domain", "strategy")
+
     return (
         f"[WORKSTREAM CONTEXT]\n"
         f"Name: {name}\n"
         f"Domain: {domain}\n"
         f"Goal: {goal}\n\n"
-        f"Only infer skills needed to achieve THIS workstream goal.\n"
-        f"Be domain-appropriate:\n"
-        f"- finance/accounting => procurement, budgeting, financial modelling, accounting, governance\n"
-        f"- commercial => negotiation, contracting, pricing, vendor mgmt\n"
-        f"- legal/risk => compliance, controls, risk mgmt, privacy/security\n"
-        f"- technical => deep learning, data engineering, MLOps, software engineering\n\n"
-        f"Do NOT bias toward technical skills unless the domain is technical/delivery.\n\n"
+        f"INSTRUCTIONS:\n"
+        f"1) Infer skills ONLY for achieving THIS workstream's goal.\n"
+        f"2) Treat the goal as the scope boundary: include skills that directly enable the goal.\n"
+        f"3) Required skills = minimally sufficient to achieve the goal.\n"
+        f"4) Preferred skills = improve success, speed, quality, or reduce delivery risk for the goal.\n"
+        f"5) If a skill does not materially affect achieving the goal, it should not be selected.\n\n"
+        f"Now infer skills for this workstream.\n\n"
     )
+
+
 
 
 async def infer_workstream_requirements(query: str, ws: dict) -> SkillRequirements:
@@ -395,22 +394,7 @@ async def find_candidates_for_workstream(
         (for now derived from matched_skills; can later be upgraded to DB-backed)
         """
 
-        # Build "all_skills" in a stable, display-friendly shape
-        all_skills = []
-        for ms in (m.matched_skills or []):
-            if not isinstance(ms, dict):
-                continue
-
-            skill_name = ms.get("skill")
-            level = ms.get("employee_level")
-
-            if skill_name:
-                all_skills.append(
-                    {
-                        "skill": skill_name,
-                        "level": level,
-                    }
-                )
+        all_skills = load_employee_all_skills(db_path, m.employee_id)
 
         return {
             # --- existing fields (unchanged) ---

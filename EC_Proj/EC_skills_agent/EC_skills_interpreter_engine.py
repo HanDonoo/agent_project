@@ -198,7 +198,7 @@ Rules (must follow precisely):
   - weight: 0.0 - 1.0 (how central the skill is)
   - confidence: 0.0 - 1.0 (your confidence it's relevant)
   - importance: 0.0 - 1.0 (how critical for THIS query)
-  - rationale: 1-2 short sentences
+  - rationale: 1-2 short sentences where each skill rationale must explicitly reference how it enables the workstream goal
 - Avoid always choosing 1.0.
 - Return ONLY valid JSON.
 

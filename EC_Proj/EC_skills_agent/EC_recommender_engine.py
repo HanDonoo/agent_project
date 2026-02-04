@@ -139,6 +139,27 @@ def load_employee_skill_matrix(db_path: str) -> Tuple[List[dict], Dict[int, Dict
 
     return employees, emp_skills
 
+def load_employee_all_skills(db_path: str, employee_id: int) -> List[dict]:
+    """
+    Returns ALL skills for a single employee from the DB.
+    Shape matches what your formatter expects: [{"skill": "...", "level": "..."}]
+    """
+    import sqlite3
+
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT s.name AS skill, es.proficiency_level
+            FROM employee_skills es
+            JOIN skills s ON s.id = es.skill_id
+            WHERE es.employee_id = ?
+            ORDER BY s.name
+            """,
+            (employee_id,),
+        ).fetchall()
+
+    return [{"skill": r["skill"], "level": r["proficiency_level"]} for r in rows]
 
 # =======================
 # Complexity Profile (AIClient-based)
