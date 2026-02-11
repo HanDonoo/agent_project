@@ -482,12 +482,12 @@ async def list_models():
         "object": "list",
         "data": [
             {
-                "id": "ec-skills-finder",
+                "id": "One-Connector",
                 "object": "model",
                 "created": int(time.time()),
                 "owned_by": "company",
                 "permission": [],
-                "root": "ec-skills-finder",
+                "root": "One-Connector",
                 "parent": None,
             }
         ],
@@ -684,60 +684,88 @@ async def process_skills_query(
 # ---------------------------
 # Response formatting for OpenWebUI
 # ---------------------------
-def format_response(result: Dict[str, Any]) -> str:
-    def _fmt_score(x: Any) -> str:
+def format_response(result: dict) -> str:
+    """
+    OpenWebUI-friendly "proper UI" formatter.
+
+    What it does:
+    - Clear sections + compact layout
+    - "Recommended Contacts" is deduped across workstreams (this becomes the main answer)
+    - Workstream details are compact (top candidates as one-liners, not giant blocks)
+    - Optional sections only appear when relevant:
+        - Coverage & Gaps (only if missing_required exists or coverage is weak)
+        - Next Actions (always safe, short)
+    """
+
+    # -----------------------
+    # Small helpers
+    # -----------------------
+    def _norm(s):
+        return (s or "").strip()
+
+    def _fmt_score(x, default="0.50"):
         try:
             return f"{float(x):.2f}"
         except Exception:
-            return "0.50"
+            return default
 
-    def _fmt_pct(x: Any) -> str:
+    def _fmt_pct(x):
         try:
-            v = float(x)
-            return f"{int(round(v * 100))}%"
+            return f"{int(round(float(x) * 100))}%"
         except Exception:
             return "—"
 
-    def _safe_float(x: Any, default: float = 0.0) -> float:
+    def _safe_int(x, default=0):
+        try:
+            return int(x)
+        except Exception:
+            return default
+
+    def _safe_float(x, default=0.0):
         try:
             return float(x)
         except Exception:
             return default
 
-    def _emp_label(emp: Dict[str, Any]) -> str:
+    def _emp_label(emp: dict) -> str:
         try:
-            return f"Employee {int(emp.get('employee_id')):03d}"
+            return f"Employee {_safe_int(emp.get('employee_id')):03d}"
         except Exception:
             return f"Employee {emp.get('employee_id')}"
 
-    def _emp_header(emp: Dict[str, Any]) -> str:
+    def _emp_header(emp: dict) -> str:
         label = _emp_label(emp)
         title = emp.get("position") or emp.get("position_title") or ""
         team = emp.get("team") or ""
         if team:
-            return f"{label} — {title} (Team: {team})".strip()
+            return f"{label} — {title} ({team})".strip()
         return f"{label} — {title}".strip()
 
-    def _domain_explainer(domain: str) -> str:
+    def _domain_blurb(domain: str) -> str:
         d = (domain or "").lower().strip()
-        if d in {"technical", "delivery", "ops"}:
-            return "These skills are essential to assess the technical aspects of the project"
+        if d in {"technical", "delivery"}:
+            return "These skills help confirm technical feasibility and delivery approach."
+        if d in {"ops"}:
+            return "These skills help ensure operational readiness and rollout support."
         if d in {"risk", "legal"}:
-            return "These skills are crucial to assess the risk landscape and develop effective mitigation plans"
-        if d in {"finance", "commercial"}:
-            return "These skills are essential to assess commercial and financial feasibility"
-        return "These skills are crucial to achieve the workstream goal"
+            return "These skills help identify risks and ensure compliance/controls."
+        if d in {"finance"}:
+            return "These skills help validate budgets, forecasts, and financial guardrails."
+        if d in {"commercial"}:
+            return "These skills help with negotiation, contracting, and vendor alignment."
+        return "These skills help achieve the workstream goal."
 
-    def _targets_map(skill_list: List[dict], default_target: str) -> Dict[str, str]:
-        out: Dict[str, str] = {}
-        for s in skill_list or []:
+    def _targets_map(skills_list: list, default_target: str) -> dict:
+        out = {}
+        for s in skills_list or []:
             sk = s.get("skill")
             if not sk:
                 continue
             out[str(sk)] = str(s.get("target_level") or default_target)
         return out
 
-    def _find_employee_level(emp: Dict[str, Any], skill_name: str) -> Any:
+    def _find_employee_level(emp: dict, skill_name: str):
+        """Look inside matched_skills for a specific skill's employee_level."""
         for m in (emp.get("matched_skills") or []):
             if not isinstance(m, dict):
                 continue
@@ -745,127 +773,278 @@ def format_response(result: Dict[str, Any]) -> str:
                 return m.get("employee_level")
         return None
 
-    def _relevant_skills_line(emp: Dict[str, Any], required_targets: Dict[str, str], preferred_targets: Dict[str, str]) -> str:
-        parts: List[str] = []
-        for sk, tgt in required_targets.items():
-            lvl = _find_employee_level(emp, sk)
-            lvl_txt = "None" if lvl is None else str(lvl)
-            parts.append(f"{sk}: {lvl_txt} (target: {tgt})")
-        # include preferred too (if you want it shown)
-        for sk, tgt in preferred_targets.items():
-            lvl = _find_employee_level(emp, sk)
-            lvl_txt = "None" if lvl is None else str(lvl)
-            parts.append(f"{sk}: {lvl_txt} (target: {tgt})")
-        return "; ".join(parts)
-
-    def _all_other_skills_line(emp: Dict[str, Any]) -> str:
+    def _relevant_skills_line(emp: dict, required_targets: dict, preferred_targets: dict) -> str:
         """
-        Requires emp["all_skills"] to exist (added in find_candidates_for_workstream()).
+        Render only skills relevant to this workstream (required + preferred).
+        Example: "Data Engineering — expert (target: skilled); Cloud Platforms — advanced (target: skilled)"
+        """
+        parts = []
+
+        # required first
+        for sk, tgt in (required_targets or {}).items():
+            lvl = _find_employee_level(emp, sk)
+            lvl_txt = "None" if lvl is None else str(lvl)
+            parts.append(f"{sk} — {lvl_txt} (target: {tgt})")
+
+        # preferred after
+        for sk, tgt in (preferred_targets or {}).items():
+            lvl = _find_employee_level(emp, sk)
+            lvl_txt = "None" if lvl is None else str(lvl)
+            parts.append(f"{sk} — {lvl_txt} (target: {tgt})")
+
+        return "; ".join(parts) if parts else "—"
+    
+    
+    def _other_strengths_line(emp: dict, relevant_skill_names_lower: set) -> str:
+        """
+        Shows ALL skills excluding workstream relevant skills (req/pref).
         """
         skills = emp.get("all_skills") or []
         if not skills:
-            return "All other skills: (not available)"
-        # show concise "Skill: level" pairs
-        pairs = []
-        for s in skills[:25]:
+            return ""  # optional section
+
+        extras = []
+        for s in skills:
             if not isinstance(s, dict):
                 continue
             name = s.get("skill") or s.get("skill_name")
             lvl = s.get("level")
             if not name:
                 continue
-            pairs.append(f"{name}: {lvl if lvl else 'None'}")
+            if str(name).strip().lower() in relevant_skill_names_lower:
+                continue
+            extras.append((str(name).strip(), ("None" if not lvl else str(lvl))))
+
+        if not extras:
+            return ""
+
+        pairs = [f"{n}: {l}" for (n, l) in extras]
         return "All other skills: " + ", ".join(pairs)
 
-    understanding = (result.get("understanding") or "").strip()
-    if not understanding:
-        understanding = "Identify the skills needed to address the user’s request."
 
-    complexity = result.get("complexity", {}) or {}
-    team_plan = result.get("team_plan") or {}
+    def _pick_top_contacts(team_plan: dict, max_contacts: int) -> list:
+        """
+        Deduped across all workstreams:
+        - prefer each workstream's selected team first (ranked order)
+        - then fill from candidate_pool
+        - dedupe by employee_id
+        - stable order: first seen wins
+        """
+        seen = set()
+        out = []
 
-    lines: List[str] = []
-    lines.append("Query Understanding:")
-    lines.append(understanding)
-    lines.append(f"Complexity: {complexity.get('label','medium')} ({_fmt_score(complexity.get('score',0.5))})")
-    lines.append((complexity.get("reasoning") or "Complexity inferred from the query.").strip())
-    lines.append("👥 Team Plan & Who To Talk To:")
-    lines.append(f"•\tCross-functional input needed: {bool(team_plan.get('needs_team', False))}")
-    lines.append(f"•\tSuggested people to talk to: {int(team_plan.get('team_size', 1) or 1)}")
-    lines.append(f"•\tReasoning: {(team_plan.get('reasoning') or 'Team plan inferred from query.').strip()}")
+        for ws in (team_plan.get("workstreams") or []):
+            reco = ws.get("workstream_reco") or {}
+            # prefer team first (set-cover output)
+            for emp in (reco.get("team") or []):
+                if not isinstance(emp, dict):
+                    continue
+                eid = emp.get("employee_id")
+                if eid in seen:
+                    continue
+                seen.add(eid)
+                out.append(emp)
+                if len(out) >= max_contacts:
+                    return out
 
-    for ws in (team_plan.get("workstreams", []) or [])[:5]:
-        ws_name = ws.get("name", "Workstream")
-        ws_goal = (ws.get("goal") or "").strip()
-        ws_domain = (ws.get("domain") or "strategy").strip()
+            # then candidate_pool
+            for emp in (reco.get("candidate_pool") or []):
+                if not isinstance(emp, dict):
+                    continue
+                eid = emp.get("employee_id")
+                if eid in seen:
+                    continue
+                seen.add(eid)
+                out.append(emp)
+                if len(out) >= max_contacts:
+                    return out
 
-        lines.append(f"{ws_name} - Goal: {ws_goal}")
-        lines.append(_domain_explainer(ws_domain))
+        return out[:max_contacts]
 
+    def _workstream_top_candidates_lines(ws: dict, max_candidates: int = 3) -> list:
+        """
+        Compact top candidates for a workstream (one-line each).
+        Prefer 'team' (set-cover) then fill from pool.
+        """
         reco = ws.get("workstream_reco") or {}
         reqs = (reco.get("requirements", {}) or {}).get("required", []) or []
         prefs = (reco.get("requirements", {}) or {}).get("preferred", []) or []
-
-        # Required / preferred lines (match your template)
-        if reqs:
-            lines.append("Required skills: " + ", ".join([str(s.get("skill")) for s in reqs if s.get("skill")]))
-        else:
-            lines.append("Required skills: —")
-
-        if prefs:
-            lines.append("Preferred skills: " + ", ".join([str(s.get("skill")) for s in prefs if s.get("skill")]))
-        else:
-            lines.append("Preferred skills: —")
-
-        lines.append("Who to talk to:")
-
-        team = reco.get("team") or []
-        pool = reco.get("candidate_pool") or []
-        primary = team[0] if team else (pool[0] if pool else None)
-
         required_targets = _targets_map(reqs, "skilled")
         preferred_targets = _targets_map(prefs, "awareness")
 
-        if isinstance(primary, dict):
-            lines.append(_emp_header(primary))
-            if primary.get("email"):
-                lines.append(f"📧 {primary.get('email')}")
-            lines.append(f"✅ Relevant skills: {_relevant_skills_line(primary, required_targets, preferred_targets)}")
-            lines.append(_all_other_skills_line(primary))
-            lines.append("They are recommended as the top candidate because they cover "
-                        f"{_fmt_pct(primary.get('coverage_required'))} of required skills for this workstream.")
-        else:
-            lines.append("No suitable people found for this workstream.")
-            continue
-
-        # Other candidates block
-        seen = {primary.get("employee_id")} if isinstance(primary, dict) else set()
-        others: List[Dict[str, Any]] = []
-
-        for c in team[1:]:
-            if isinstance(c, dict) and c.get("employee_id") not in seen:
-                others.append(c)
-                seen.add(c.get("employee_id"))
-
-        for c in pool:
-            if len(others) >= 2:
+        # pick candidates: team then pool
+        candidates = []
+        seen = set()
+        for emp in (reco.get("team") or []):
+            if isinstance(emp, dict) and emp.get("employee_id") not in seen:
+                seen.add(emp.get("employee_id"))
+                candidates.append(emp)
+        for emp in (reco.get("candidate_pool") or []):
+            if len(candidates) >= max_candidates:
                 break
-            if isinstance(c, dict) and c.get("employee_id") not in seen:
-                others.append(c)
-                seen.add(c.get("employee_id"))
+            if isinstance(emp, dict) and emp.get("employee_id") not in seen:
+                seen.add(emp.get("employee_id"))
+                candidates.append(emp)
 
-        if others:
-            lines.append("Other candidates to talk to are:")
-            for c in others:
-                lines.append(f"–\t{_emp_header(c)}")
-                if c.get("email"):
-                    lines.append(f"\t📧 {c.get('email')}")
-                lines.append(f"\t✅ Relevant skills: {_relevant_skills_line(c, required_targets, preferred_targets)}")
-                lines.append(f"\t{_all_other_skills_line(c)}")
+        lines = []
+        for emp in candidates[:max_candidates]:
+            rel = _relevant_skills_line(emp, required_targets, preferred_targets)
+            lines.append(f"- {_emp_header(emp)} — {rel}")
+        if not lines:
+            lines.append("- No suitable candidates found for this workstream.")
+        return lines
 
-        lines.append("")  # blank line between workstreams
+    # -----------------------
+    # Extract top-level info
+    # -----------------------
+    understanding = _norm(result.get("understanding")) or "Interpreting the request, planning workstreams, then inferring skills per stream."
+    complexity = result.get("complexity", {}) or {}
+    team_plan = result.get("team_plan", {}) or {}
 
-    return "\n".join(lines).strip() + "\n"
+    cross_fn = bool(team_plan.get("needs_team", False))
+    team_size = _safe_int(team_plan.get("team_size", 1), 1) or 1
+    team_reason = _norm(team_plan.get("reasoning")) or "Team plan inferred from the query."
+
+    # Deduped top contacts across all workstreams
+    top_contacts = _pick_top_contacts(team_plan, max_contacts=team_size)
+
+    # Determine gaps
+    missing_any = []
+    low_cov_flags = []
+    for ws in (team_plan.get("workstreams") or []):
+        reco = ws.get("workstream_reco") or {}
+        missing = reco.get("missing_required") or []
+        if missing:
+            missing_any.extend([str(m).strip() for m in missing if str(m).strip()])
+
+        # coverage check (if primary candidate exists)
+        team = reco.get("team") or []
+        primary = team[0] if team else None
+        cov = _safe_float(primary.get("coverage_required"), 1.0) if isinstance(primary, dict) else 1.0
+        if cov < 0.75:
+            low_cov_flags.append((ws.get("name") or "Workstream", cov))
+
+    missing_any = list(dict.fromkeys([m.lower() for m in missing_any]))  # dedupe lower
+    show_gaps = bool(missing_any) or bool(low_cov_flags)
+
+    # -----------------------
+    # Build the response
+    # -----------------------
+    lines = []
+
+    # Query Understanding
+    lines.append("### Query Understanding")
+    lines.append(understanding)
+    lines.append("")
+
+    # Complexity
+    lines.append("### Complexity")
+    lines.append(f"- **Level:** {complexity.get('label','medium')} ({_fmt_score(complexity.get('score',0.5))})")
+    lines.append(f"- **Why:** {_norm(complexity.get('reasoning')) or 'Complexity inferred from the query.'}")
+    lines.append("")
+
+    # Team plan
+    lines.append("### Team Plan")
+    lines.append(f"- **Cross-functional input needed:** {'✅ Yes' if cross_fn else '❌ No'}")
+    lines.append(f"- **Recommended people to involve:** **{team_size}**")
+    lines.append(f"- **Why:** {team_reason}")
+    lines.append("")
+
+    # Recommended Contacts (main answer)
+    lines.append("## Recommended Contacts")
+    if not top_contacts:
+        lines.append("_No suitable contacts found based on the current employee + skills data._")
+        lines.append("")
+    else:
+        for idx, emp in enumerate(top_contacts, start=1):
+            if not isinstance(emp, dict):
+                continue
+
+            # A simple "why" line based on score/coverage (avoid overclaiming)
+            cov = _fmt_pct(emp.get("coverage_required"))
+            score = _fmt_score(emp.get("score", 0.0), default="0.00")
+
+            # relevant skills here should be GLOBAL-ish: use their matched_skills as displayed, but keep it short
+            # We'll show top 3 matched_skills (required/preferred) if present, otherwise omit
+            ms = [m for m in (emp.get("matched_skills") or []) if isinstance(m, dict)]
+            ms_pairs = []
+            for m in ms:
+                sk = m.get("skill")
+                lvl = m.get("employee_level")
+                if not sk:
+                    continue
+                ms_pairs.append(f"{sk}: {lvl if lvl else 'None'}")
+                if len(ms_pairs) >= 3:
+                    break
+
+            rel_short = ", ".join(ms_pairs) if ms_pairs else "—"
+
+            lines.append(f"### {idx}) {_emp_header(emp)}")
+            if emp.get("email"):
+                lines.append(f"- **Email:** {emp.get('email')}")
+            lines.append(f"- **Why this person:** Strong match (coverage: {cov}, score: {score}).")
+            lines.append(f"- **Relevant skills (snapshot):** {rel_short}")
+
+            # Optional other strengths (global) — keep it short
+            # Here we exclude the top 3 shown in rel_short to avoid repetition
+            rel_names = {p.split(":")[0].strip().lower() for p in ms_pairs}
+            opt = _other_strengths_line(emp, relevant_skill_names_lower=rel_names)
+            if opt:
+                lines.append(f"- {opt}")
+
+            lines.append("")
+
+    # Coverage & Gaps (optional)
+    if show_gaps:
+        lines.append("## Coverage & Gaps (Optional)")
+        if missing_any:
+            lines.append(f"- **Missing required skills across workstreams:** {', '.join(sorted(set(missing_any)))}")
+        if low_cov_flags:
+            # show up to 3 low coverage flags
+            parts = [f"{name} ({_fmt_pct(cov)})" for (name, cov) in low_cov_flags[:3]]
+            lines.append(f"- **Low coverage workstreams:** {', '.join(parts)}")
+        lines.append("")
+
+    # Workstreams (details)
+    workstreams = (team_plan.get("workstreams") or [])[:5]
+    if workstreams:
+        lines.append("## Workstreams (Details)")
+        for ws in workstreams:
+            ws_name = ws.get("name") or "Workstream"
+            ws_goal = _norm(ws.get("goal")) or "Support the request."
+            ws_domain = ws.get("domain") or "strategy"
+
+            reco = ws.get("workstream_reco") or {}
+            reqs = (reco.get("requirements", {}) or {}).get("required", []) or []
+            prefs = (reco.get("requirements", {}) or {}).get("preferred", []) or []
+
+            req_txt = ", ".join([str(s.get("skill")) for s in reqs if s.get("skill")]) or "—"
+            pref_txt = ", ".join([str(s.get("skill")) for s in prefs if s.get("skill")]) or "—"
+
+            lines.append(f"### {ws_name}")
+            lines.append(f"**Goal:** {ws_goal}")
+            lines.append(_domain_blurb(ws_domain))
+            lines.append(f"- **Required skills:** {req_txt}")
+            lines.append(f"- **Preferred skills:** {pref_txt}")
+            lines.append("")
+            lines.append("**Top candidates:**")
+            lines.extend(_workstream_top_candidates_lines(ws, max_candidates=3))
+            lines.append("")
+
+    # Next actions (short, safe)
+    lines.append("## Next Actions (Optional)")
+    if top_contacts:
+        lines.append(f"1) Book a quick call with **{_emp_label(top_contacts[0])}** to align on the approach and constraints.")
+        if len(top_contacts) > 1:
+            lines.append(f"2) Pull in **{_emp_label(top_contacts[1])}** for cross-checking risks/trade-offs and stakeholder alignment.")
+        lines.append("3) If gaps remain, broaden the search with a more specific query (tech stack, timeline, governance constraints).")
+    else:
+        lines.append("1) Try a more specific query (tech stack, domain, timeline).")
+        lines.append("2) Confirm your skills catalogue includes the skills you expect (exact strings).")
+    lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
 
 
 

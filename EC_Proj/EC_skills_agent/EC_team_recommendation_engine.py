@@ -106,6 +106,9 @@ You MUST output:
 2) organisational_span (0.0–1.0):
    - how many distinct organisational domains must be involved (finance, procurement/commercial, legal, risk, technical, ops, delivery)
    - high span means multiple stakeholders are required even if no delivery happens yet
+   - Keep organisational_span LOW (<=0.4) if the query is mostly within one domain (e.g., technical build)
+
+
 
 3) workstreams:
    - For intent="talent_search":
@@ -220,7 +223,7 @@ Return ONLY valid JSON in this exact shape:
         elif organisational_span < 0.80:
             span_lift = 2
         else:
-            span_lift = 2
+            span_lift = 3
 
         team_size = min(max_team_size, max(base + span_lift, len(ws_out)))
         needs_team = team_size > 1
@@ -228,14 +231,22 @@ Return ONLY valid JSON in this exact shape:
     else:
         # talent_search: allow multiple stakeholder workstreams (2–5) so output matches the example style
         # We keep recommendation_mode="many_candidates" and team sizing logic, but DO NOT collapse to a single stream.
-        if organisational_span < 0.30:
-            team_size = 1
-        elif organisational_span < 0.55:
-            team_size = 2
-        elif organisational_span < 0.80:
-            team_size = 3
-        else:
-            team_size = min(max_team_size, 5)
+        # Softer sizing: 1–3 by default, 4 only for genuinely broad queries
+        base = 1
+        if organisational_span >= 0.45:
+            base += 1
+        if organisational_span >= 0.75:
+            base += 1  # only becomes 3 here
+
+        # Let complexity add at most +1 for talent_search
+        if complexity_score >= 0.70:
+            base += 1
+
+        team_size = min(max_team_size, max(1, base))
+
+        # Hard cap: keep talent_search tight unless *explicitly* cross-domain
+        team_size = min(team_size, 3 if organisational_span < 0.85 else 4)
+
 
         needs_team = team_size > 1
         recommendation_mode = "many_candidates"

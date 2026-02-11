@@ -189,7 +189,7 @@ python start_server.py
 curl -X POST http://localhost:8001/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "ec-skills-finder",
+    "model": "One-Connector",
     "messages": [
       {"role": "user", "content": "Find a Python expert"}
     ]

@@ -4,6 +4,7 @@ import json
 import sqlite3
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple, Set, Any
+import re
 
 from .ai_client import AIClient
 
@@ -87,12 +88,27 @@ def clamp01(x) -> float:
         return 0.0
 
 
+_JSON_BLOCK = re.compile(r"\{[\s\S]*\}")
+
 def safe_json(text: str) -> Optional[dict]:
+    if not text:
+        return None
+    t = text.strip()
     try:
-        obj = json.loads((text or "").strip())
+        obj = json.loads(t)
+        return obj if isinstance(obj, dict) else None
+    except Exception:
+        pass
+
+    m = _JSON_BLOCK.search(t)
+    if not m:
+        return None
+    try:
+        obj = json.loads(m.group(0))
         return obj if isinstance(obj, dict) else None
     except Exception:
         return None
+
 
 
 # =======================
@@ -230,7 +246,37 @@ Return JSON exactly in this shape:
         timeout=240,
     )
 
-    data = safe_json(content) or {}
+    data = safe_json(content)
+    if not isinstance(data, dict):
+        # one repair attempt
+        repair_prompt = f"""
+    Your previous response was not valid JSON.
+
+    Return ONLY valid JSON in this exact shape:
+    {{
+    "complexity_score": 0.0,
+    "complexity_label": "low|medium|high",
+    "reasoning": "1-3 sentences",
+    "targets_required": [],
+    "targets_preferred": []
+    }}
+
+    Query:
+    {query}
+    """.strip()
+
+        content2 = client.chat(
+            messages=[
+                {"role": "system", "content": "Return ONLY valid JSON. No extra text."},
+                {"role": "user", "content": repair_prompt},
+            ],
+            temperature=0.1,
+            timeout=240,
+        )
+        data = safe_json(content2) or {}
+    else:
+        data = data or {}
+
 
     def parse_targets(key: str) -> List[SkillTarget]:
         out: List[SkillTarget] = []
@@ -257,10 +303,26 @@ Return JSON exactly in this shape:
             )
         return out
 
-    score = clamp01(data.get("complexity_score", 0.5))
-    label = str(data.get("complexity_label", "medium")).lower().strip()
+    # Heuristic baseline (only used if model output is missing)
+    q = (query or "").lower()
+
+    # very rough but effective:
+    heuristic = 0.25
+    if any(w in q for w in ["build", "implement", "deliver", "deploy", "migrate", "rollout", "production"]):
+        heuristic += 0.20
+    if any(w in q for w in ["and", "plus", "alongside"]) or any(w in q for w in ["commercial", "risk", "legal", "finance"]):
+        heuristic += 0.15
+    if len(q.split()) > 20:
+        heuristic += 0.10
+
+    heuristic = clamp01(heuristic)
+
+    score = clamp01(data.get("complexity_score", heuristic))
+    label = str(data.get("complexity_label", ""))
+    label = label.lower().strip()
     if label not in {"low", "medium", "high"}:
-        label = "medium"
+        label = "low" if score < 0.35 else ("medium" if score < 0.7 else "high")
+
 
     reasoning = str(data.get("reasoning", "")).strip() or "Complexity inferred from the query."
 
@@ -344,7 +406,7 @@ def recommend_top_candidates(
             weight = clamp01(rs.weight) * skill_imp * target_imp
 
             if not emp_level:
-                missing_penalty += weight * (0.8 + float(getattr(profile, "complexity_score", 0.5) or 0.5))
+                missing_penalty += weight * (0.8 + 0.6 * float(getattr(profile, "complexity_score", 0.5) or 0.5))
                 matched.append(
                     {
                         "skill": sk,

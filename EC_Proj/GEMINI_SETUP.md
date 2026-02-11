@@ -147,7 +147,7 @@ curl http://localhost:8001/health
 curl -X POST http://localhost:8001/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "ec-skills-finder",
+    "model": "One-Connector",
     "messages": [
       {"role": "user", "content": "Find me a Python expert"}
     ]
@@ -157,7 +157,7 @@ curl -X POST http://localhost:8001/v1/chat/completions \
 ### 测试 3：在 OpenWebUI 中测试
 
 1. 打开 OpenWebUI (http://localhost:3000)
-2. 选择模型：`ec-skills-finder`
+2. 选择模型：`One-Connector`
 3. 输入查询：`Find a machine learning engineer`
 4. 查看结果
 

@@ -57,7 +57,7 @@ EC API will run on: http://localhost:8001
 ### Step 4: Select Model and Chat
 
 1. **Start a new chat**
-2. **Select model**: Click the model dropdown → Select `ec-skills-finder`
+2. **Select model**: Click the model dropdown → Select `One-Connector`
 3. **Start chatting**:
    ```
    Find me a Python expert
@@ -89,7 +89,7 @@ python start_server.py
 ### Step 3: Select Model and Chat
 
 1. **Start a new chat**
-2. **Select model**: `ec-skills-finder`
+2. **Select model**: `One-Connector`
 3. **Start chatting**
 
 ---
@@ -99,7 +99,7 @@ python start_server.py
 ### Test 1: Check if OpenWebUI can see the model
 
 In OpenWebUI, click the model dropdown. You should see:
-- `ec-skills-finder`
+- `One-Connector`
 
 ### Test 2: Send a test query
 
@@ -137,7 +137,7 @@ Required Skills:
 curl http://localhost:8001/v1/models
 
 # Should return:
-# {"object":"list","data":[{"id":"ec-skills-finder",...}]}
+# {"object":"list","data":[{"id":"One-Connector",...}]}
 ```
 
 If not working:

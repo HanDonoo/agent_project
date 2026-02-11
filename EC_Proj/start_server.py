@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 def main():
     """Start the uvicorn server"""
-    print("🚀 Starting EC Skills Finder API Server...")
+    print("🚀 Starting One Connector Finder API Server...")
     print("=" * 60)
     print("📍 API will be available at: http://localhost:8001")
     print("📚 API docs at: http://localhost:8001/docs")
