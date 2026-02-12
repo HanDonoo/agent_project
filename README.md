@@ -147,7 +147,7 @@ Internal Use Only
 ## 🤝 Contributing
 
 This is an internal project.
-
+- link to presentation: https://drive.google.com/file/d/1qvVrf38jvDrxzv_g_AnAJqjjIt9cXYBt/view?usp=drive_web -
 ---
 
 **Current Active Project**: EC_Proj
